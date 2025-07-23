@@ -1,12 +1,12 @@
 #ifndef SHARED_H
 #define SHARED_H
 
-#define _GNU_SOURCE
+#define _GNU_SOURCE //per pid_t (mi sembra)(anche perchè è richiesto nei requisiti)
 
 struct config_t;
 struct dati_sim_t;
 
-//tipologie servizi
+//tipologie servizi (da verificare se è utlizzato da più file, altrimenti recluderlo nell'unico bastardo che lo usa)
 typedef enum {
     PACCHI = 0,
     LETTERE = 1,
