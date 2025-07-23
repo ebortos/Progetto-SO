@@ -14,6 +14,7 @@
 - git commit -m "*Modifiche e aggiunte fatte*"
 - git push
 - git status (per assicurarsi che tutto sia a posto)
+- __N.B.__ tutta questa tiritera si può fare molto più facilemente da vscode
 
 ## Consigli utili ed errori da evitare
 - Completare prima la versione da 24 punti
