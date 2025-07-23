@@ -29,4 +29,5 @@
 
 ## Cose fatte E testate
 - Lettura config
+- Makefile
 - Creazione ed esecuzione processi (tutti ok yippie!!!!)
