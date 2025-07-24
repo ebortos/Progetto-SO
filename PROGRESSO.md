@@ -16,16 +16,14 @@
 
 ## TO-DO
 - capire che stracazzo significa il paragrafo 5.6 della consegna, in particolare la parte sui conf (forse guardare la lezione di presentazione del progetto di schifanella può essere d'aiuto, ora non ho voglia), in caso cambiare (easy) lettura dei file in direttore __(si può lasciare anche per dopo)__
-- scrivere codice erogatore
-- scrivere codice sportello
-- scrivere codice operatore
-- scrivere codice utente
+- abbozzare comunicazione ticket fra erogatore-utente (msg queue)
+- assegnazione casuale servizio a sportello
 - scrivere pezzo simulazione (probabilmente conviene fare una funzione a parte)
 
 ## Cose da fixare/controllare
 - Per le stats vedere i commenti di fianco al codice
 - capire come memorizzare questi dati _"le statistiche precedenti suddivise per tipologia di servizio"_ __(si può lasciare anche per dopo)__
-- capire se usare semafori posix o system v __(si può lasciare anche per dopo, non troppo dopo però)__
+- capire se usare semafori posix o system v __(si può lasciare anche per dopo, non troppo dopo però)__(forse meglio system v)
 
 ## Cose fatte E testate
 - Lettura config
