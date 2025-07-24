@@ -23,4 +23,7 @@ typedef struct {
     int operatore_id;      //operatore assegnato
 } sportello_t;
 
+int init_msg_queue(key_t key);
+int remove_msg_queue(key_t key);
+
 #endif
