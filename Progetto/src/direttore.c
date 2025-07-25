@@ -5,6 +5,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <sys/msg.h>
 #include <time.h>
 
 typedef struct {
@@ -105,15 +106,18 @@ pid_t create_erogatore_ticket() {
 //PID = PORCO IL DIO
 
 pid_t create_sportello(config_t *config) {
-    char *argv[] = {"sportello", NULL};
-    
-    for (int i = 0; i < config->NOF_WORKER_SEATS; i++) {
+    for (int i = 1; i <= config->NOF_WORKER_SEATS; i++) {
         pid_t  pid = fork();
 
         if (pid < 0) {
             perror("Errore fork sportello.\n");
             exit(EXIT_FAILURE);
         } else if (pid == 0) {
+            char spor_id[16];           
+            snprintf(spor_id, sizeof(spor_id), "%d", i);    //converte i a str per passarlo come argomento (id) a ciascun sportello
+
+            char *argv[] = { "./sportello", spor_id, NULL};
+
             if (execve("./sportello", argv, environ) == -1) {
                 perror("Errore execve sportello.\n");
                 exit(EXIT_FAILURE);
@@ -164,8 +168,20 @@ pid_t create_utente(config_t *config) {
     }
 }
 
-service_type_t assign_random_service() {
-    return (service_type_t)(rand() % 6);
+void assign_service_sportello(int msg_id, int num_sportelli) {
+    for (int i = 0; i < num_sportelli; i++) {
+        sportello_msg_t msg;
+        msg.mtype = 1000 + i;       //1000 arbitrario per differenziare i msg
+        msg.sportello_info.service_type = rand() % 6;
+        msg.sportello_info.occupato = 0;
+
+        if (msgsnd(msg_id, &msg, sizeof(sportello_t), 0) == -1) {
+            perror("Errore nell'invio del messaggio allo sportello");
+            exit(EXIT_FAILURE);
+        }
+
+        printf("[Direttore] Assegnato servizio %d a sportello %d\n", msg.sportello_info.service_type, i);
+    }
 }
 
 //**************************************************//
@@ -174,20 +190,22 @@ service_type_t assign_random_service() {
 int main() {
     config_t config;
 
+    srand(time(NULL) ^ getpid());
+
     if (load_config("../config.conf", &config) != 0) {
         perror("Errore nella lettura del file.\n");
         return -1;
     }
-    
-    srand(time(NULL) ^ getpid());
 
-    current_service = assign_random_service();
-    printf("[SPORTELLO %d] Nuovo giorno, servizio assegnato: %s\n",
-       getpid(), service_type_to_string(current_service));
+    //Init masg queue sportello
+    key_t spor_queue_key = get_queue_key(FTOK_PATH_SPOR, MSG_QUEUE_ID_SPOR);
+    int spor_msg_id = init_msg_queue(spor_queue_key);
+
     //DEBUG
     //**************************************************//
     create_erogatore_ticket();
     create_utente(&config);
+    assign_service_sportello(spor_msg_id, config.NOF_WORKER_SEATS);
     //**************************************************//
 
     return 0;

@@ -6,10 +6,13 @@
 
 #define _GNU_SOURCE //per pid_t (mi sembra)(anche perchè è richiesto nei requisiti)
 
-#define FTOK_PATH "../config.conf" 
-#define MSG_QUEUE_ID 'M'
+#define FTOK_PATH_EROG "../config.conf" 
+#define MSG_QUEUE_ID_EROG 'A'
 #define MTYPE_REQUEST 1 
 #define MTYPE_REPLY 2
+
+#define FTOK_PATH_SPOR "../Makefile"
+#define MSG_QUEUE_ID_SPOR 'B'
 
 //tipologie servizi (da verificare se è utlizzato da più file, altrimenti recluderlo nell'unico bastardo che lo usa)
 typedef enum {
@@ -30,17 +33,22 @@ typedef struct {
 
 typedef struct {
     long mtype;
+    sportello_t sportello_info;
+} sportello_msg_t;
+
+typedef struct {
+    long mtype;
     int service_type;
     pid_t pid;              //pid del richiedente
-} request_msg;
+} erogatore_request_msg;
 
 typedef struct {
     long mtype;
     int ticket_number;
-} reply_msg;
+} erogatore_reply_msg;
 
 int init_msg_queue(key_t key);
-key_t get_queue_key();
+key_t get_queue_key(const char *path, char id);
 void remove_msg_queue(key_t key);
 
 #endif
