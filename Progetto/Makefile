@@ -14,6 +14,7 @@ CFLAGS := -Wvla -Wextra -Werror -I$(INCLUDE_DIR)
 # === Source files ===
 SRC := $(wildcard $(SRC_DIR)/*.c)
 OBJ := $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.o, $(SRC))
+COMMON_OBJ := $(BUILD_DIR)/ipc_utils.o
 
 # === Executables (one per .c file with main) ===
 EXECUTABLES := direttore erogatore sportello operatore utente# add other main files here manually
@@ -22,19 +23,19 @@ EXECUTABLES := direttore erogatore sportello operatore utente# add other main fi
 all: $(BIN_DIR) $(BUILD_DIR) $(addprefix $(BIN_DIR)/, $(EXECUTABLES))
 
 # === Executable targets ===
-$(BIN_DIR)/direttore: $(BUILD_DIR)/direttore.o | $(BIN_DIR)
+$(BIN_DIR)/direttore: $(BUILD_DIR)/direttore.o $(COMMON_OBJ) | $(BIN_DIR)
 	$(CC) $^ -o $@
 
-$(BIN_DIR)/erogatore: $(BUILD_DIR)/erogatore.o | $(BIN_DIR)
+$(BIN_DIR)/erogatore: $(BUILD_DIR)/erogatore.o $(COMMON_OBJ) | $(BIN_DIR)
 	$(CC) $^ -o $@
 
-$(BIN_DIR)/sportello: $(BUILD_DIR)/sportello.o | $(BIN_DIR)
+$(BIN_DIR)/utente: $(BUILD_DIR)/utente.o $(COMMON_OBJ) | $(BIN_DIR)
 	$(CC) $^ -o $@
 
-$(BIN_DIR)/operatore: $(BUILD_DIR)/operatore.o | $(BIN_DIR)
+$(BIN_DIR)/sportello: $(BUILD_DIR)/sportello.o $(COMMON_OBJ) | $(BIN_DIR)
 	$(CC) $^ -o $@
 
-$(BIN_DIR)/utente: $(BUILD_DIR)/utente.o | $(BIN_DIR)
+$(BIN_DIR)/operatore: $(BUILD_DIR)/operatore.o $(COMMON_OBJ) | $(BIN_DIR)
 	$(CC) $^ -o $@
 
 # === Pattern rule for building .o files ===
