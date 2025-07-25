@@ -19,13 +19,12 @@
 
 - capire che stracazzo significa il paragrafo 5.6 della consegna, in particolare la parte sui conf (forse guardare la lezione di presentazione del progetto di schifanella può essere d'aiuto, ora non ho voglia), in caso cambiare (easy) lettura dei file in direttore __(si può lasciare anche per dopo)__
 - capire come comunicare tipo servizio a sportello
-- rendere scelta ticket utente casuale
 - (eventualmente) assegnare numeri più facili al nome degli utenti (magari salvando il pid di ciascuno durante la creazione in un array e chiamandoli con il proprio indice)
-- assegnazione casuale servizio a sportello
 - scrivere pezzo simulazione (probabilmente conviene fare una funzione a parte)
 
 ## Cose da fixare/controllare
 
+- Quando l'utente riceve il ticket, il numero del ticket sembra quasi casuale (da 1 a 5, sperimentale). Ogni nuova prova dovrebbe sempre far partire i ticket da 1 __SOLUZIONE:__ il problema sta nel fatto che durante il debug le msgqueue vecchie non venivano chiuse, si risolve chiudendole nel direttore alla fine della simulazione
 - Per le stats vedere i commenti di fianco al codice
 - capire come memorizzare questi dati _"le statistiche precedenti suddivise per tipologia di servizio"_ __(si può lasciare anche per dopo)__
 - capire se usare semafori posix o system v __(si può lasciare anche per dopo, non troppo dopo però)__(forse meglio system v)
@@ -36,3 +35,4 @@
 - Makefile
 - Creazione ed esecuzione processi (tutti ok yippie!!!!)
 - Abbozzo msg queue erogatore-utente
+- Assegnazione casuale servizio-sportello dal direttore con msg queue
