@@ -15,8 +15,8 @@ int init_msg_queue(key_t key) {
     return msg_id;
 }
 
-key_t get_queue_key() {
-    key_t key = ftok(FTOK_PATH, MSG_QUEUE_ID);
+key_t get_queue_key(const char *path, char id) {
+    key_t key = ftok(path, id);
     if (key == -1) {
         perror("ftok failed");
         exit(EXIT_FAILURE);
