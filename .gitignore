@@ -56,5 +56,5 @@ dkms.conf
 
 # Misc
 *.csv
-/bin/
-/build/
+bin/
+build/
