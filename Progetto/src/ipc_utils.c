@@ -1,3 +1,6 @@
+#include "../include/shared.h"
+
+#include <stdio.h>
 #include <stdlib.h>
 #include <sys/ipc.h>
 #include <sys/msg.h>
@@ -12,18 +15,18 @@ int init_msg_queue(key_t key) {
     return msg_id;
 }
 
-int remove_msg_queue(key_t key) {
-    int msg_id = msgget(key, 0666);  // Access the queue (don't recreate)
-    if (msg_id == -1) {
-        perror("Error accessing message queue");
-        return -1;
+key_t get_queue_key() {
+    key_t key = ftok(FTOK_PATH, MSG_QUEUE_ID);
+    if (key == -1) {
+        perror("ftok failed");
+        exit(EXIT_FAILURE);
     }
+    return key;
+}
 
+void remove_msg_queue(int msg_id) {
     if (msgctl(msg_id, IPC_RMID, NULL) == -1) {
-        perror("Error removing message queue");
-        return -1;
+        perror("msgctl (remove) failed");
+        exit(EXIT_FAILURE);
     }
-
-    printf("Message queue removed.\n");
-    return 0;
 }

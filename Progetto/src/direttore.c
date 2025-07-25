@@ -5,6 +5,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <time.h>
 
 typedef struct {
     int NOF_WORKERS;
@@ -84,8 +85,8 @@ int load_config(const char *fname, config_t *config) {
     return 0;
 }
 
-void create_erogatore_ticket() {
-    char *argv[] = {"erogatore", "OK", NULL};
+pid_t create_erogatore_ticket() {
+    char *argv[] = {"erogatore", NULL};
     pid_t  pid = fork();
     
     if (pid < 0) {
@@ -98,13 +99,13 @@ void create_erogatore_ticket() {
         }
     }
 
-    waitpid(pid, NULL, 0); //DEBUG, per sincronizzare l'output
+    return pid;
 }
 
 //PID = PORCO IL DIO
 
-void create_sportello(config_t *config) {
-    char *argv[] = {"sportello", "OK", NULL};
+pid_t create_sportello(config_t *config) {
+    char *argv[] = {"sportello", NULL};
     
     for (int i = 0; i < config->NOF_WORKER_SEATS; i++) {
         pid_t  pid = fork();
@@ -118,15 +119,13 @@ void create_sportello(config_t *config) {
                 exit(EXIT_FAILURE);
             }
         }
-    }
 
-    for (int i = 0; i < config->NOF_WORKER_SEATS; i++) { 
-        wait(NULL); //DEBUG, per sincronizzare l'output
+        return pid;
     }
 }
 
-void create_operatore(config_t *config) {
-    char *argv[] = {"operatore", "OK", NULL};
+pid_t create_operatore(config_t *config) {
+    char *argv[] = {"operatore", NULL};
     
     for (int i = 0; i < config->NOF_WORKERS; i++) {
         pid_t  pid = fork();
@@ -140,15 +139,13 @@ void create_operatore(config_t *config) {
                 exit(EXIT_FAILURE);
             }
         }
-    }
 
-    for (int i = 0; i < config->NOF_WORKERS; i++) { 
-        wait(NULL); //DEBUG, per sincronizzare l'output
+        return pid;
     }
 }
 
-void create_utente(config_t *config) {
-    char *argv[] = {"utente", "OK", NULL};
+pid_t create_utente(config_t *config) {
+    char *argv[] = {"utente", NULL};
     
     for (int i = 0; i < config->NOF_USERS; i++) {
         pid_t  pid = fork();
@@ -162,11 +159,13 @@ void create_utente(config_t *config) {
                 exit(EXIT_FAILURE);
             }
         }
-    }
 
-    for (int i = 0; i < config->NOF_USERS; i++) { 
-        wait(NULL); //DEBUG, per sincronizzare l'output
+        return pid;
     }
+}
+
+service_type_t assign_random_service() {
+    return (service_type_t)(rand() % 6);
 }
 
 //**************************************************//
@@ -180,11 +179,14 @@ int main() {
         return -1;
     }
     
+    srand(time(NULL) ^ getpid());
+
+    current_service = assign_random_service();
+    printf("[SPORTELLO %d] Nuovo giorno, servizio assegnato: %s\n",
+       getpid(), service_type_to_string(current_service));
     //DEBUG
     //**************************************************//
     create_erogatore_ticket();
-    create_sportello(&config);
-    create_operatore(&config);
     create_utente(&config);
     //**************************************************//
 
