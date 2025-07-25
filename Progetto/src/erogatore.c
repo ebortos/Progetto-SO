@@ -6,21 +6,21 @@
 #include <unistd.h>
 
 int issue_ticket() {
-    key_t key = get_queue_key();
+    key_t key = get_queue_key(FTOK_PATH_EROG, MSG_QUEUE_ID_EROG);
     int msg_id = init_msg_queue(key);
 
     int ticket_counter = 1;
     
     while (1) {
-        request_msg req;
+        erogatore_request_msg req;
         if (msgrcv(msg_id, &req, sizeof(req) - sizeof(long), MTYPE_REQUEST, 0) == -1) {
             perror("msgrcv (request) failed");
             exit(EXIT_FAILURE);
         }
 
-        printf("[EROGATORE] Received request for service %d from PID %d\n", req.service_type, req.pid);
+        printf("[EROGATORE] Ricevuta richiesta per servizio %d dall'utente %d\n", req.service_type, req.pid);
 
-        reply_msg reply;
+        erogatore_reply_msg reply;
         reply.mtype = req.pid;
         reply.ticket_number = ticket_counter++;
 
@@ -29,10 +29,12 @@ int issue_ticket() {
             exit(EXIT_FAILURE);
         }
     }
-
+    
     return 0;
 }
 
 int main(int argc, char *argv[]) {
     issue_ticket();
+
+    return 0;
 }
