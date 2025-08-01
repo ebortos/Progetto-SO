@@ -14,7 +14,7 @@ CFLAGS := -Wvla -Wextra -Werror -I$(INCLUDE_DIR)
 # === Source files ===
 SRC := $(wildcard $(SRC_DIR)/*.c)
 OBJ := $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.o, $(SRC))
-COMMON_OBJ := $(BUILD_DIR)/ipc_utils.o
+COMMON_OBJ := $(BUILD_DIR)/utils.o
 
 # === Executables (one per .c file with main) ===
 EXECUTABLES := direttore erogatore sportello operatore utente# add other main files here manually
