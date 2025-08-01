@@ -4,8 +4,6 @@
 #include <sys/ipc.h>
 #include <unistd.h>
 
-#define _GNU_SOURCE //per pid_t (mi sembra)(anche perchè è richiesto nei requisiti)
-
 #define FTOK_PATH_EROG "../config.conf" 
 #define MSG_QUEUE_ID_EROG 'A'
 #define MTYPE_REQUEST 1 
@@ -13,6 +11,9 @@
 
 #define FTOK_PATH_SPOR "../Makefile"
 #define MSG_QUEUE_ID_SPOR 'B'
+
+#define FTOK_PATH_SEM "../src/direttore"
+#define SEM_KEY_ID 'C'
 
 //tipologie servizi (da verificare se è utlizzato da più file, altrimenti recluderlo nell'unico bastardo che lo usa)
 typedef enum {
@@ -50,5 +51,13 @@ typedef struct {
 int init_msg_queue(key_t key);
 key_t get_queue_key(const char *path, char id);
 void remove_msg_queue(key_t key);
+
+void setup_signal_handlers(void);
+void sigterm_handler(int signum);
+
+int create_semaphore_set(key_t key, int nsems);
+void remove_semaphore_set(int sem_id);
+void sem_wait(int sem_id, int sem_num);
+void sem_signal(int sem_id, int sem_num);
 
 #endif
