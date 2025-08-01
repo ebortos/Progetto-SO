@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include "../include/shared.h"
 
 #include <stdio.h>
@@ -7,6 +9,9 @@
 #include <sys/wait.h>
 #include <sys/msg.h>
 #include <time.h>
+#include <signal.h>
+
+#define NUM_PROCESSI (1 + config.NOF_USERS + config.NOF_WORKER_SEATS + config.NOF_WORKERS)
 
 typedef struct {
     int NOF_WORKERS;
@@ -20,32 +25,13 @@ typedef struct {
     int EXPLODE_THRESHOLD;
 } config_t;
 
-//info simulazione
 typedef struct {
-    int giorno_corrente;
-    int minuto_corrente;    //da capire se utile
-    
-    //info giornaliere (reset ogni giorno)
-    int utenti_serviti_oggi;        //*forse inutile, perchè si potrebbe direttamente aggiornare 
-    int servizi_erogati_oggi;       // la conta totale di clienti e servizi
-    int servizi_non_erogati_oggi;
-    double tempo_attesa_tot_oggi;   //idem con patate a quello sopra*
-    int operatori_attivi_oggi;      //**in teoria neanche questo serve dato che il n di operatori è definito nel config
-                                    
-    // Statistiche totali
-    int utenti_serviti_tot;
-    int servizi_erogati_tot;
-    int servizi_non_erogati_tot;
-    double tempo_attesa_tot;
-    int pause_tot;
-    int operatori_attivi_tot;       //idem a sopra**
-    
-    // Controllo terminazione
-    int utenti_in_attesa;
-    
-} dati_sim_t;
+    pid_t *all_pids;       // array contenente tutti i pid
+    size_t n_pids;
+} process_table_t;
 
 extern char **environ; //per execve
+process_table_t proc_table;
 
 //legge il config e salva nella struct config_t
 int load_config(const char *fname, config_t *config) {
@@ -86,86 +72,28 @@ int load_config(const char *fname, config_t *config) {
     return 0;
 }
 
-pid_t create_erogatore_ticket() {
-    char *argv[] = {"erogatore", NULL};
-    pid_t  pid = fork();
-    
-    if (pid < 0) {
-        perror("Errore fork erogatore_ticket.\n");
-        exit(EXIT_FAILURE);
-    } else if (pid == 0) {
-        if (execve("./erogatore", argv, environ) == -1) {
-            perror("Errore execve erogatore_ticket.\n");
-            exit(EXIT_FAILURE);
-        }
-    }
-
-    return pid;
-}
-
 //PID = PORCO IL DIO
 
-pid_t create_sportello(config_t *config) {
-    for (int i = 1; i <= config->NOF_WORKER_SEATS; i++) {
-        pid_t  pid = fork();
+int create_processes(const char *exec_path, int count, pid_t *pid_array, int start_index) {
+    char *argv[] = {(char *)exec_path, NULL};
+
+    for (int i = 0; i < count; i++) {
+        pid_t pid = fork();
 
         if (pid < 0) {
-            perror("Errore fork sportello.\n");
+            perror("fork");
             exit(EXIT_FAILURE);
         } else if (pid == 0) {
-            char spor_id[16];           
-            snprintf(spor_id, sizeof(spor_id), "%d", i);    //converte i a str per passarlo come argomento (id) a ciascun sportello
-
-            char *argv[] = { "./sportello", spor_id, NULL};
-
-            if (execve("./sportello", argv, environ) == -1) {
-                perror("Errore execve sportello.\n");
+            if (execve(exec_path, argv, environ) == -1) {
+                perror("execve");
                 exit(EXIT_FAILURE);
             }
         }
 
-        return pid;
+        pid_array[start_index + i] = pid;
     }
-}
 
-pid_t create_operatore(config_t *config) {
-    char *argv[] = {"operatore", NULL};
-    
-    for (int i = 0; i < config->NOF_WORKERS; i++) {
-        pid_t  pid = fork();
-
-        if (pid < 0) {
-            perror("Errore fork operatore.\n");
-            exit(EXIT_FAILURE);
-        } else if (pid == 0) {
-            if (execve("./operatore", argv, environ) == -1) {
-                perror("Errore execve operatore.\n");
-                exit(EXIT_FAILURE);
-            }
-        }
-
-        return pid;
-    }
-}
-
-pid_t create_utente(config_t *config) {
-    char *argv[] = {"utente", NULL};
-    
-    for (int i = 0; i < config->NOF_USERS; i++) {
-        pid_t  pid = fork();
-
-        if (pid < 0) {
-            perror("Errore fork utente.\n");
-            exit(EXIT_FAILURE);
-        } else if (pid == 0) {
-            if (execve("./utente", argv, environ) == -1) {
-                perror("Errore execve utente.\n");
-                exit(EXIT_FAILURE);
-            }
-        }
-
-        return pid;
-    }
+    return 0;
 }
 
 void assign_service_sportello(int msg_id, int num_sportelli) {
@@ -176,7 +104,7 @@ void assign_service_sportello(int msg_id, int num_sportelli) {
         msg.sportello_info.occupato = 0;
 
         if (msgsnd(msg_id, &msg, sizeof(sportello_t), 0) == -1) {
-            perror("Errore nell'invio del messaggio allo sportello");
+            perror("msgsnd direttore to sportello");
             exit(EXIT_FAILURE);
         }
 
@@ -184,8 +112,41 @@ void assign_service_sportello(int msg_id, int num_sportelli) {
     }
 }
 
+void send_signal_to_all(int sign) {
+    for (size_t i = 0; i < proc_table.n_pids; i++) {
+        kill(proc_table.all_pids[i], sign);
+    }
+}
+
+void run_simulation(int sim_duration, long n_nano_secs, int sem_id) {
+    struct timespec day = {
+        .tv_sec = n_nano_secs / 1000000000,
+        .tv_nsec = n_nano_secs % 1000000000
+    };
+
+    for (int d = 1; d <= sim_duration; d++) {
+        printf("[DIRETTORE] ================= Inizio giorno %d =================\n", d);
+        sem_signal(sem_id, 0);   //segnale di inizio giornata
+
+        nanosleep(&day, NULL);
+
+        sem_signal(sem_id, 1);    //segnale di fine giornata
+        printf("[DIRETTORE] ================= Fine giorno %d =================\n", d);
+        // Salvare stats qui (credo)
+    }
+
+    send_signal_to_all(SIGTERM);        //segnale di fine simulazione
+
+    // Wait children
+    for (size_t i = 0; i < proc_table.n_pids; i++) {
+        waitpid(proc_table.all_pids[i], NULL, 0);
+    }
+}
+
+
 //**************************************************//
-//per ora il main è principalmente usato per testare//
+//per ora il main è principalmente usato per testare
+//a meno di commenti "DEBUG" lasciare così che dovrebbe andare
 //**************************************************//
 int main() {
     config_t config;
@@ -197,16 +158,49 @@ int main() {
         return -1;
     }
 
-    //Init masg queue sportello
+    //Init array pid processi
+    proc_table.n_pids = NUM_PROCESSI;
+    proc_table.all_pids = malloc(sizeof(pid_t) * proc_table.n_pids);
+
+    if (!proc_table.all_pids) {
+        perror("malloc all_pids");
+        exit(EXIT_FAILURE);
+    }
+
+
+    //Init msg queue sportello
     key_t spor_queue_key = get_queue_key(FTOK_PATH_SPOR, MSG_QUEUE_ID_SPOR);
     int spor_msg_id = init_msg_queue(spor_queue_key);
 
-    //DEBUG
-    //**************************************************//
-    create_erogatore_ticket();
-    create_utente(&config);
+    int pid_array_index_offset = 0;
+
+    //Erogatore
+    create_processes("./erogatore", 1, proc_table.all_pids, pid_array_index_offset);
+    pid_array_index_offset += 1;
+/*
+    //Utente
+    create_processes("./utente", config.NOF_USERS, proc_table.all_pids, pid_array_index_offset);
+    pid_array_index_offset += config.NOF_USERS;
+
+    //Sportello
+    create_processes("./sportello", config.NOF_WORKER_SEATS, proc_table.all_pids, pid_array_index_offset);
+    pid_array_index_offset += config.NOF_WORKER_SEATS;
     assign_service_sportello(spor_msg_id, config.NOF_WORKER_SEATS);
-    //**************************************************//
+
+    //Operatore
+    create_processes("./operatore", config.NOF_WORKERS, proc_table.all_pids, pid_array_index_offset);
+*/
+
+    sleep(1);   //tempo per inizializzare i processi(temporaneo)
+
+    //Init semaphores
+    key_t sem_key = ftok(FTOK_PATH_SEM, SEM_KEY_ID);
+    int sem_id = create_semaphore_set(sem_key, 2);
+
+    run_simulation(config.SIM_DURATION, config.N_NANO_SECS, sem_id);
+
+    // Cleanup
+    free(proc_table.all_pids);
 
     return 0;
 }
