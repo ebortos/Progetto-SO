@@ -4,15 +4,15 @@
 #include <sys/ipc.h>
 #include <unistd.h>
 
-#define FTOK_PATH_EROG "../config.conf" 
+#define FTOK_PATH_EROG "../tmp/ipc_msg_key"
 #define MSG_QUEUE_ID_EROG 'A'
 #define MTYPE_REQUEST 1 
 #define MTYPE_REPLY 2
 
-#define FTOK_PATH_SPOR "../Makefile"
+#define FTOK_PATH_SPOR "../tmp/ipc_msg_key2"
 #define MSG_QUEUE_ID_SPOR 'B'
 
-#define FTOK_PATH_SEM "../src/direttore"
+#define FTOK_PATH_SEM "../tmp/ipc_sem_key"
 #define SEM_KEY_ID 'C'
 
 //tipologie servizi (da verificare se è utlizzato da più file, altrimenti recluderlo nell'unico bastardo che lo usa)
@@ -48,6 +48,12 @@ typedef struct {
     int ticket_number;
 } erogatore_reply_msg;
 
+union semun {
+    int val;
+    struct semid_ds *buf;
+    unsigned short *array;
+};
+
 int init_msg_queue(key_t key);
 key_t get_queue_key(const char *path, char id);
 void remove_msg_queue(key_t key);
@@ -59,5 +65,6 @@ int create_semaphore_set(key_t key, int nsems);
 void remove_semaphore_set(int sem_id);
 void sem_wait(int sem_id, int sem_num);
 void sem_signal(int sem_id, int sem_num);
+void sem_set(int sem_id, int sem_num, int value);
 
 #endif

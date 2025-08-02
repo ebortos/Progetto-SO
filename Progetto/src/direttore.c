@@ -10,6 +10,7 @@
 #include <sys/msg.h>
 #include <time.h>
 #include <signal.h>
+#include <sys/sem.h>
 
 #define NUM_PROCESSI (1 + config.NOF_USERS + config.NOF_WORKER_SEATS + config.NOF_WORKERS)
 
@@ -125,23 +126,27 @@ void run_simulation(int sim_duration, long n_nano_secs, int sem_id) {
     };
 
     for (int d = 1; d <= sim_duration; d++) {
-        printf("[DIRETTORE] ================= Inizio giorno %d =================\n", d);
-        sem_signal(sem_id, 0);   //segnale di inizio giornata
+        printf("[DIRETTORE] =============== Inizio giorno %d ===============\n", d);
+        sem_signal(sem_id, 0);   //segnale di inizio giornata, sem 0
 
         nanosleep(&day, NULL);
 
-        sem_signal(sem_id, 1);    //segnale di fine giornata
-        printf("[DIRETTORE] ================= Fine giorno %d =================\n", d);
-        // Salvare stats qui (credo)
+        sem_signal(sem_id, 1);    //segnale di fine giornata, sem 1
+        printf("[DIRETTORE] =============== Fine giorno %d =================\n", d);
+        //Salvare stats qui (credo)
+
+        sem_set(sem_id, 0, 0);    //reset sem 0 e 1 per la prossima giornata 
+        sem_set(sem_id, 1, 0);
     }
 
-    send_signal_to_all(SIGTERM);        //segnale di fine simulazione
+    sem_signal(sem_id, 2);        //segnale di fine simulazione, sem 2
 
-    // Wait children
+    //Wait children
     for (size_t i = 0; i < proc_table.n_pids; i++) {
         waitpid(proc_table.all_pids[i], NULL, 0);
     }
 }
+
 
 
 //**************************************************//
@@ -191,15 +196,15 @@ int main() {
     create_processes("./operatore", config.NOF_WORKERS, proc_table.all_pids, pid_array_index_offset);
 */
 
-    sleep(1);   //tempo per inizializzare i processi(temporaneo)
+    sleep(1);   //tempo per inizializzare i processi (temporaneo, brutto e da togliere successivamente)
 
     //Init semaphores
     key_t sem_key = ftok(FTOK_PATH_SEM, SEM_KEY_ID);
-    int sem_id = create_semaphore_set(sem_key, 2);
+    int sem_id = create_semaphore_set(sem_key, 3);
 
     run_simulation(config.SIM_DURATION, config.N_NANO_SECS, sem_id);
 
-    // Cleanup
+    //Cleanup malloc
     free(proc_table.all_pids);
 
     return 0;
