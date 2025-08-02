@@ -23,7 +23,7 @@ al massimo lo pago io, 20 euro per passare sto esame dimmerda sono anche pochi+s
 
 ## Cose da fixare/controllare
 
-- EROGATORE, sincornizzazione sballata
+- EROGATORE, sincornizzazione sballata, simulazione non finisce (credo colpa di erog)
 - Quando l'utente riceve il ticket, il numero del ticket sembra quasi casuale (da 1 a 5, sperimentale). Ogni nuova prova dovrebbe sempre far partire i ticket da 1 __SOLUZIONE:__ il problema probabilmente sta nel fatto che durante il debug le msgqueue vecchie non venivano chiuse, si risolve chiudendole nel direttore alla fine della simulazione
 - capire come memorizzare questi dati _"le statistiche precedenti suddivise per tipologia di servizio"_ __(si può lasciare anche per dopo)__
 
