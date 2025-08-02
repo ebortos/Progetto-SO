@@ -72,12 +72,6 @@ void setup_signal_handlers(void) {
 }
 
 //Semaphore (system V)
-union semun {
-    int val;
-    struct semid_ds *buf;
-    unsigned short *array;
-};
-
 int create_semaphore_set(key_t key, int nsems) {
     int sem_id = semget(key, nsems, IPC_CREAT | 0666);
 
@@ -130,3 +124,11 @@ void sem_signal(int sem_id, int sem_num) {
     }
 }
 
+void sem_set(int sem_id, int sem_num, int value) {
+    union semun arg;
+    arg.val = value;
+    if (semctl(sem_id, sem_num, SETVAL, arg) == -1) {
+        perror("semctl SETVAL failed");
+        exit(EXIT_FAILURE);
+    }
+}
