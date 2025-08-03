@@ -31,7 +31,7 @@ typedef struct {
     size_t n_pids;
 } process_table_t;
 
-extern char **environ; //per execve
+extern char **environ;     //per execve
 process_table_t proc_table;
 
 //legge il config e salva nella struct config_t
@@ -113,10 +113,13 @@ void assign_service_sportello(int msg_id, int num_sportelli) {
     }
 }
 
-void send_signal_to_all(int sign) {
-    for (size_t i = 0; i < proc_table.n_pids; i++) {
-        kill(proc_table.all_pids[i], sign);
-    }
+void wait_children_ready(int sem_id, int n_ready) {
+    printf("[DIR]   Attendo %d processi ready …\n", n_ready);
+
+    for (int i = 0; i < n_ready; ++i)         /* blocca finché ognuno non fa +1 */
+        sem_wait(sem_id, 3);
+
+    printf("[DIR]   Tutti i figli sono ready\n");
 }
 
 void run_simulation(int sim_duration, long n_nano_secs, int sem_id) {
@@ -126,23 +129,28 @@ void run_simulation(int sim_duration, long n_nano_secs, int sem_id) {
     };
 
     for (int d = 1; d <= sim_duration; d++) {
-        printf("[DIRETTORE] =============== Inizio giorno %d ===============\n", d);
+
+        if (d > 1) {             //reset sem0/1 dal secondo giorno in poi
+            sem_set(sem_id, 0, 0);
+            sem_set(sem_id, 1, 0);
+        }
+
+        printf("[DIRETTORE] ======== Inizio giorno %d ========\n", d);
         sem_signal(sem_id, 0);   //segnale di inizio giornata, sem 0
 
         nanosleep(&day, NULL);
 
         sem_signal(sem_id, 1);    //segnale di fine giornata, sem 1
-        printf("[DIRETTORE] =============== Fine giorno %d =================\n", d);
+        printf("[DIRETTORE] ======== Fine giorno %d =========\n", d);
         //Salvare stats qui (credo)
-
-        sem_set(sem_id, 0, 0);    //reset sem 0 e 1 per la prossima giornata 
-        sem_set(sem_id, 1, 0);
     }
 
-    sem_signal(sem_id, 2);        //segnale di fine simulazione, sem 2
+    /* 1. segnala fine simulazione (sem 2)  */
+    sem_signal(sem_id, 2);
+    sem_signal(sem_id, 0);               /* sveglia eventuali wait su sem0 */
 
     //Wait children
-    for (size_t i = 0; i < proc_table.n_pids; i++) {
+    for (size_t i = 0; i < proc_table.n_pids; ++i) {
         waitpid(proc_table.all_pids[i], NULL, 0);
     }
 }
@@ -155,6 +163,8 @@ void run_simulation(int sim_duration, long n_nano_secs, int sem_id) {
 //**************************************************//
 int main() {
     config_t config;
+
+    setvbuf(stdout, NULL, _IOLBF, 0);   /* stdout line-buffered */
 
     srand(time(NULL) ^ getpid());
 
@@ -172,6 +182,9 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
+    //Init semaphores
+    key_t sem_key = ftok(FTOK_PATH_SEM, SEM_KEY_ID);
+    int sem_id = create_semaphore_set(sem_key, 4);
 
     //Init msg queue sportello
     key_t spor_queue_key = get_queue_key(FTOK_PATH_SPOR, MSG_QUEUE_ID_SPOR);
@@ -196,12 +209,7 @@ int main() {
     create_processes("./operatore", config.NOF_WORKERS, proc_table.all_pids, pid_array_index_offset);
 */
 
-    sleep(1);   //tempo per inizializzare i processi (temporaneo, brutto e da togliere successivamente)
-
-    //Init semaphores
-    key_t sem_key = ftok(FTOK_PATH_SEM, SEM_KEY_ID);
-    int sem_id = create_semaphore_set(sem_key, 3);
-
+    wait_children_ready(sem_id, 1);     //direttore aspetta che i figli siano tutti pronti
     run_simulation(config.SIM_DURATION, config.N_NANO_SECS, sem_id);
 
     //Cleanup malloc

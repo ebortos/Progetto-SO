@@ -64,7 +64,10 @@ void sigterm_handler(int signum);
 int create_semaphore_set(key_t key, int nsems);
 void remove_semaphore_set(int sem_id);
 void sem_wait(int sem_id, int sem_num);
+int sem_trywait(int sem_id, int sem_num);
 void sem_signal(int sem_id, int sem_num);
 void sem_set(int sem_id, int sem_num, int value);
+
+void sem_debug(const char *tag, int sem_id, int nsems);
 
 #endif

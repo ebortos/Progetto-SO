@@ -115,6 +115,14 @@ void sem_wait(int sem_id, int sem_num) {
     }
 }
 
+int sem_trywait(int sem_id, int sem_num) {
+    struct sembuf op = { sem_num, -1, IPC_NOWAIT };
+    if (semop(sem_id, &op, 1) == -1) {
+        return (errno == EAGAIN) ? 0 : -1;   // 0 = non disponibile, -1 = errore vero
+    }
+    return 1;                                // preso con successo
+}
+
 void sem_signal(int sem_id, int sem_num) {
     struct sembuf op = {sem_num, 1, 0};
 
@@ -131,4 +139,22 @@ void sem_set(int sem_id, int sem_num, int value) {
         perror("semctl SETVAL failed");
         exit(EXIT_FAILURE);
     }
+}
+
+//DEBUG
+void sem_debug(const char *tag, int sem_id, int nsems)
+{
+    unsigned short vals[16];                 /* max 16 semafori per debug */
+    union semun arg;
+    arg.array = vals;
+
+    if (semctl(sem_id, 0, GETALL, arg) == -1) {
+        perror("semctl GETALL");
+        return;
+    }
+
+    printf("%s [", tag);
+    for (int i = 0; i < nsems; ++i)
+        printf("%s%hu", (i?"," : ""), vals[i]);
+    printf("]\n");
 }
