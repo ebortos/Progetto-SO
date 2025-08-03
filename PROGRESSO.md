@@ -21,6 +21,7 @@ al massimo lo pago io, 20 euro per passare sto esame dimmerda sono anche pochi+s
 - capire che stracazzo significa il paragrafo 5.6 della consegna, in particolare la parte sui conf (forse guardare la lezione di presentazione del progetto di schifanella può essere d'aiuto, ora non ho voglia), in caso cambiare (easy) lettura dei file in direttore __(si può lasciare anche per dopo)__
 - (eventualmente) assegnare numeri più facili al nome degli utenti (magari salvando il pid di ciascuno durante la creazione in un array e chiamandoli con il proprio indice)
 - aggiungere semafori a utente -> verificare funzionamento comunicazione utente-erogatore
+- __ALLA FINE:__ guardare utils.c e rimuovere tutte le funzioni non utilizzate
 
 ## Cose da fixare/controllare
 
