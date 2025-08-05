@@ -103,7 +103,7 @@ void sv_sem_wait(int sem_id, int sem_num) {
     }
 }
 
-int sem_trywait(int sem_id, int sem_num) {
+int sv_sem_trywait(int sem_id, int sem_num) {
     struct sembuf op = { sem_num, -1, IPC_NOWAIT };
     if (semop(sem_id, &op, 1) == -1) {
         return (errno == EAGAIN) ? 0 : -1;   // 0 = non disponibile, -1 = errore vero
@@ -112,7 +112,7 @@ int sem_trywait(int sem_id, int sem_num) {
     return 1;                                // preso con successo
 }
 
-void sem_signal(int sem_id, int sem_num) {
+void sv_sem_signal(int sem_id, int sem_num) {
     struct sembuf op = {sem_num, 1, 0};
 
     if (semop(sem_id, &op, 1) == -1) {
@@ -121,7 +121,7 @@ void sem_signal(int sem_id, int sem_num) {
     }
 }
 
-void sem_set(int sem_id, int sem_num, int value) {
+void sv_sem_set(int sem_id, int sem_num, int value) {
     union semun arg;
     arg.val = value;
     if (semctl(sem_id, sem_num, SETVAL, arg) == -1) {

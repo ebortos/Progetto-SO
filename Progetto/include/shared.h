@@ -75,9 +75,9 @@ void remove_msg_queue(key_t key);
 int create_semaphore_set(key_t key, int nsems);
 void remove_semaphore_set(key_t key);
 void sv_sem_wait(int sem_id, int sem_num);
-int sem_trywait(int sem_id, int sem_num);
-void sem_signal(int sem_id, int sem_num);
-void sem_set(int sem_id, int sem_num, int value);
+int sv_sem_trywait(int sem_id, int sem_num);
+void sv_sem_signal(int sem_id, int sem_num);
+void sv_sem_set(int sem_id, int sem_num, int value);
 
 int open_log_queue(void);
 int log_sendf(int log_qid, const char *fmt, ...);
