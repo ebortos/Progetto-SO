@@ -36,20 +36,18 @@ key_t get_queue_key(const char *path, char id) {
 }
 
 void remove_msg_queue(key_t key) {
-    if (key == (key_t)-1) return 0;
+    int id = msgget(key, 0);
 
-    int mq_id = msgget(key, 0);
-    if (mq_id == -1) {
-        if (errno == ENOENT) return 0;   /* già assente */
-        perror("msgget (remove by key)");
-        return -1;
+    if (id == -1) {
+        if (errno != ENOENT) 
+            perror("msgget remove");
+        return;
     }
-    if (msgctl(mq_id, IPC_RMID, NULL) == -1) {
-        perror("msgctl IPC_RMID (mq)");
-        return -1;
-    }
-    return 0;
+
+    if (msgctl(id, IPC_RMID, NULL) == -1)
+        perror("msgctl IPC_RMID");
 }
+
 
 //Semaphore (system V)
 int create_semaphore_set(key_t key, int nsems) {
@@ -80,18 +78,20 @@ int create_semaphore_set(key_t key, int nsems) {
     return sem_id;
 }
 
-void remove_semaphore_set(int sem_id) {
-    if (semctl(sem_id, 0, IPC_RMID) == -1) {
-        perror("semctl - IPC_RMID");
+void remove_semaphore_set(key_t key) {
+    if (key == (key_t)-1) return;   //ftok fallita
+
+    int sem_id = semget(key, 0, 0);
+    if (sem_id == -1) {
+        if (errno != ENOENT)
+            perror("semget (remove by key)");
+        return;
     }
-}
 
-void sem_wait(int sem_id, int sem_num) {
-    struct sembuf op = {sem_num, -1, 0};
-
-    if (semop(sem_id, &op, 1) == -1) {
-        perror("semop - wait");
-        exit(EXIT_FAILURE);
+    /* rimuovi il set; per IPC_RMID l'argomento è ignorato */
+    if (semctl(sem_id, 0, IPC_RMID) == -1) {
+        if (errno != EIDRM && errno != EINVAL)
+            perror("semctl IPC_RMID (sem)");
     }
 }
 
@@ -100,6 +100,7 @@ int sem_trywait(int sem_id, int sem_num) {
     if (semop(sem_id, &op, 1) == -1) {
         return (errno == EAGAIN) ? 0 : -1;   // 0 = non disponibile, -1 = errore vero
     }
+    
     return 1;                                // preso con successo
 }
 
@@ -119,24 +120,6 @@ void sem_set(int sem_id, int sem_num, int value) {
         perror("semctl SETVAL failed");
         exit(EXIT_FAILURE);
     }
-}
-
-//DEBUG
-void sem_debug(const char *tag, int sem_id, int nsems)
-{
-    unsigned short vals[16];                 /* max 16 semafori per debug */
-    union semun arg;
-    arg.array = vals;
-
-    if (semctl(sem_id, 0, GETALL, arg) == -1) {
-        perror("semctl GETALL");
-        return;
-    }
-
-    printf("%s [", tag);
-    for (int i = 0; i < nsems; ++i)
-        printf("%s%hu", (i?"," : ""), vals[i]);
-    printf("]\n");
 }
 
 //Logger
@@ -172,9 +155,9 @@ void cleanup_all_ipc(void) {
     key_t k_erog = ftok(FTOK_PATH_EROG, MSG_QUEUE_ID_EROG);
     key_t k_spor = ftok(FTOK_PATH_SPOR, MSG_QUEUE_ID_SPOR);
 
-    (void)remove_msg_queue_by_key(k_log);
-    (void)remove_msg_queue_by_key(k_erog);
-    (void)remove_msg_queue_by_key(k_spor);
+    remove_msg_queue(k_log);
+    remove_msg_queue(k_erog);
+    remove_msg_queue(k_spor);
 
-    (void)remove_semaphore_set_by_key(k_sem);
+    remove_semaphore_set(k_sem);
 }

@@ -4,6 +4,10 @@
 #include <sys/ipc.h>
 #include <unistd.h>
 
+#define FTOK_PATH_LOG "../tmp/ipc_msg_log_key"
+#define MSG_QUEUE_ID_LOG 'L'
+#define LOG_TEXT_MAX 256
+
 #define FTOK_PATH_EROG "../tmp/ipc_msg_key"
 #define MSG_QUEUE_ID_EROG 'A'
 #define MTYPE_REQUEST 1 
@@ -27,7 +31,7 @@ typedef enum {
 
 //sportello
 typedef struct {
-    int service_type;     //servizio erogato
+    int service_type;      //servizio erogato
     int occupato;          //0 = libero, 1 = occupato
     int operatore_id;      //operatore assegnato
 } sportello_t;
@@ -54,20 +58,31 @@ union semun {
     unsigned short *array;
 };
 
+typedef struct {
+    long mtype;
+    char text[LOG_TEXT_MAX];
+} log_msg_t;
+
+enum {
+    MTYPE_LOG_LINE     = 1,
+    MTYPE_LOG_SHUTDOWN = 255
+};
+
 int init_msg_queue(key_t key);
 key_t get_queue_key(const char *path, char id);
 void remove_msg_queue(key_t key);
 
-void setup_signal_handlers(void);
-void sigterm_handler(int signum);
-
 int create_semaphore_set(key_t key, int nsems);
-void remove_semaphore_set(int sem_id);
+void remove_semaphore_set(key_t key);
 void sem_wait(int sem_id, int sem_num);
 int sem_trywait(int sem_id, int sem_num);
 void sem_signal(int sem_id, int sem_num);
 void sem_set(int sem_id, int sem_num, int value);
 
-void sem_debug(const char *tag, int sem_id, int nsems);
+int open_log_queue(void);
+int log_sendf(int log_qid, const char *fmt, ...);
+int log_send_shutdown(int log_qid);
+
+void cleanup_all_ipc(void);
 
 #endif
