@@ -10,6 +10,7 @@
 #include <signal.h>
 #include <sys/sem.h>
 #include <errno.h>
+#include <stdarg.h>
 
 //Msg Queue
 int init_msg_queue(key_t key) {
@@ -34,41 +35,20 @@ key_t get_queue_key(const char *path, char id) {
     return key;
 }
 
-void remove_msg_queue(int msg_id) {
-    if (msgctl(msg_id, IPC_RMID, NULL) == -1) {
-        perror("msgctl (remove) failed");
-        exit(EXIT_FAILURE);
+void remove_msg_queue(key_t key) {
+    if (key == (key_t)-1) return 0;
+
+    int mq_id = msgget(key, 0);
+    if (mq_id == -1) {
+        if (errno == ENOENT) return 0;   /* già assente */
+        perror("msgget (remove by key)");
+        return -1;
     }
-}
-
-//Signal handlers
-volatile sig_atomic_t day_start = 0;
-volatile sig_atomic_t day_end = 0;
-
-static void handle_day_start(int sig) {
-    day_start = 1;
-}
-
-static void handle_day_end(int sig) {
-    day_end = 1;
-}
-
-static void handle_termination(int sig) {
-    printf("[PID %d] Ricevuto SIGTERM, terminazione.\n", getpid());
-    _exit(EXIT_SUCCESS);
-}
-
-void setup_signal_handlers(void) {
-    struct sigaction sa = {0};
-
-    sa.sa_handler = handle_day_start;
-    sigaction(SIGUSR1, &sa, NULL);
-
-    sa.sa_handler = handle_day_end;
-    sigaction(SIGUSR2, &sa, NULL);
-
-    sa.sa_handler = handle_termination;
-    sigaction(SIGTERM, &sa, NULL);
+    if (msgctl(mq_id, IPC_RMID, NULL) == -1) {
+        perror("msgctl IPC_RMID (mq)");
+        return -1;
+    }
+    return 0;
 }
 
 //Semaphore (system V)
@@ -157,4 +137,44 @@ void sem_debug(const char *tag, int sem_id, int nsems)
     for (int i = 0; i < nsems; ++i)
         printf("%s%hu", (i?"," : ""), vals[i]);
     printf("]\n");
+}
+
+//Logger
+int open_log_queue(void) {
+    key_t key = get_queue_key(FTOK_PATH_LOG, MSG_QUEUE_ID_LOG);
+    return init_msg_queue(key);
+}
+
+int log_sendf(int log_qid, const char *fmt, ...) {
+    log_msg_t m;
+    m.mtype = MTYPE_LOG_LINE;
+
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(m.text, LOG_TEXT_MAX, fmt, ap);
+    va_end(ap);
+
+    return msgsnd(log_qid, &m, sizeof(m) - sizeof(long), 0);
+}
+
+/* Invia messaggio di shutdown al logger */
+int log_send_shutdown(int log_qid) {
+    log_msg_t m;
+    m.mtype = MTYPE_LOG_SHUTDOWN;
+    m.text[0] = '\0';
+    return msgsnd(log_qid, &m, sizeof(m) - sizeof(long), 0);
+}
+
+//chiude tutte le ipc, aggiungere qua eventuali ipc nuove
+void cleanup_all_ipc(void) {
+    key_t k_sem  = ftok(FTOK_PATH_SEM,  SEM_KEY_ID);
+    key_t k_log  = ftok(FTOK_PATH_LOG,  MSG_QUEUE_ID_LOG);
+    key_t k_erog = ftok(FTOK_PATH_EROG, MSG_QUEUE_ID_EROG);
+    key_t k_spor = ftok(FTOK_PATH_SPOR, MSG_QUEUE_ID_SPOR);
+
+    (void)remove_msg_queue_by_key(k_log);
+    (void)remove_msg_queue_by_key(k_erog);
+    (void)remove_msg_queue_by_key(k_spor);
+
+    (void)remove_semaphore_set_by_key(k_sem);
 }
