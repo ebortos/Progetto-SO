@@ -95,6 +95,14 @@ void remove_semaphore_set(key_t key) {
     }
 }
 
+void sv_sem_wait(int sem_id, int sem_num) {
+    struct sembuf op = { sem_num, -1, 0 };
+    if (semop(sem_id, &op, 1) == -1) { 
+        perror("semop - wait");
+        exit(EXIT_FAILURE); 
+    }
+}
+
 int sem_trywait(int sem_id, int sem_num) {
     struct sembuf op = { sem_num, -1, IPC_NOWAIT };
     if (semop(sem_id, &op, 1) == -1) {
