@@ -48,8 +48,5 @@ int main(void) {
         fflush(stdout);
     }
 
-    //cleanup ipc
-    msgctl(log_qid, IPC_RMID, NULL);
-
     return 0;
 }
