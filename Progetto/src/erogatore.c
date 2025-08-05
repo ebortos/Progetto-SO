@@ -15,7 +15,6 @@ void issue_ticket(int sem_id, int msg_id) {
     while (1) {     
         /* 1. attesa inizio giornata (bloccante) */
         sem_wait(sem_id, 0);
-        printf("[EROGATORE] Inizio giornata lavorativa\n");
 
         /* 1.b  SUBITO dopo: fine simulazione?  */
         int v = semctl(sem_id, 2, GETVAL);
@@ -25,10 +24,7 @@ void issue_ticket(int sem_id, int msg_id) {
             exit(EXIT_FAILURE);
         }
 
-        if (v > 0) {
-            printf("[EROGATORE] Fine simulazione rilevata (dopo wait).\n");
-            return;
-        }
+        if (v > 0) return; //fine sim
 
         /* 2.  ciclo richieste finché direttore alza sem 1                  */
         while (1) {
@@ -54,26 +50,19 @@ void issue_ticket(int sem_id, int msg_id) {
             }
 
             /* 2.b – fine simulazione durante la giornata? */
-            int t = sem_trywait(sem_id, 2);     /* tua helper: 1\|0\|-1 */
+            int t = sem_trywait(sem_id, 2);
 
-            if (t == 1) {
-                printf("[EROGATORE] Fine simulazione durante la giornata.\n");
-                struct sembuf rel = {2, 1, 0};
-                semop(sem_id, &rel, 1);
-                return;
-            } else if (t == -1) {
+            if (t == 1) return;
+
+            else if (t == -1) {
                 perror("sem_trywait sem2"); 
                 exit(EXIT_FAILURE);
             }
 
             /* 2.c – fine giornata? */
             int e = sem_trywait(sem_id, 1);
-            if (e == 1) {                       /* giorno terminato */
-                struct sembuf rel = {1, 1, 0};
-                semop(sem_id, &rel, 1);
-                printf("[EROGATORE] Fine giornata, pausa...\n");
-                break;
-            } else if (e == -1) {
+            if (e == 1) break;      /* giorno terminato */    
+            else if (e == -1) {
                 perror("sem_trywait sem1"); 
                 exit(EXIT_FAILURE);
             }
@@ -103,7 +92,6 @@ int main(int argc, char *argv[]) {
     printf("[EROGATORE] Inizializzato e pronto a lavorare (PID %d)\n", getpid());
     
     issue_ticket(sem_id, msg_id);
-    printf("[EROGATORE] Terminazione completata.\n");
 
     return 0;
 }
