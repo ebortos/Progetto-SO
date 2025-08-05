@@ -26,7 +26,7 @@ int main(void) {
     int log_qid = open_log_queue();
 
     /* barriera ready */
-    sem_signal(sem_id, 3);
+    sv_sem_signal(sem_id, 3);
 
     /* loop ricezione */
     while (1) {
@@ -39,7 +39,7 @@ int main(void) {
         }
 
         if (m.mtype == MTYPE_LOG_SHUTDOWN) {
-            printf("[LOGGER] shutdown\n");
+            log_sendf(log_qid, "[LOGGER] shutdown\n");
             break;
         }
 
