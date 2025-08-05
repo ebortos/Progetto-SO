@@ -2,27 +2,27 @@
 # per semplificare la compilazione
 
 # === Paths ===
-SRC_DIR := src
-BUILD_DIR := build
-BIN_DIR := bin
+SRC_DIR     := src
+BUILD_DIR   := build
+BIN_DIR     := bin
 INCLUDE_DIR := include
 
 # === Compiler and flags ===
-CC := gcc
-CFLAGS := -Wvla -Wextra -Werror -I$(INCLUDE_DIR)
+CC      := gcc
+CFLAGS  := -Wvla -Wextra -Werror -I$(INCLUDE_DIR)
 
-# === Source files ===
-SRC := $(wildcard $(SRC_DIR)/*.c)
-OBJ := $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.o, $(SRC))
-COMMON_OBJ := $(BUILD_DIR)/utils.o
+# === Programmi con un main ===
+MAINS := direttore erogatore sportello operatore utente logger
 
-# === Executables (one per .c file with main) ===
-EXECUTABLES := direttore erogatore sportello operatore utente# add other main files here manually
+# === Sorgenti/oggetti "comuni" (senza main) ===
+# aggiungi qui altri moduli condivisi (es: ipc_utils.c, logger_utils.c, ...)
+COMMON_SRC := $(SRC_DIR)/utils.c
+COMMON_OBJ := $(COMMON_SRC:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
 
-# === Default target ===
-all: $(BIN_DIR) $(BUILD_DIR) $(addprefix $(BIN_DIR)/, $(EXECUTABLES))
+# === Target di default: tutti gli eseguibili ===
+all: $(BIN_DIR) $(BUILD_DIR) $(addprefix $(BIN_DIR)/,$(MAINS))
 
-# === Executable targets ===
+# === Link eseguibili: ciascuno linka il proprio .o + gli oggetti comuni ===
 $(BIN_DIR)/direttore: $(BUILD_DIR)/direttore.o $(COMMON_OBJ) | $(BIN_DIR)
 	$(CC) $^ -o $@
 
@@ -38,16 +38,16 @@ $(BIN_DIR)/sportello: $(BUILD_DIR)/sportello.o $(COMMON_OBJ) | $(BIN_DIR)
 $(BIN_DIR)/operatore: $(BUILD_DIR)/operatore.o $(COMMON_OBJ) | $(BIN_DIR)
 	$(CC) $^ -o $@
 
-# === Pattern rule for building .o files ===
+$(BIN_DIR)/logger: $(BUILD_DIR)/logger.o $(COMMON_OBJ) | $(BIN_DIR)
+	$(CC) $^ -o $@
+
+# === Regola generica per compilare i .c in .o ===
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# === Create build and bin folders if not present ===
-$(BUILD_DIR):
-	mkdir -p $(BUILD_DIR)
-
-$(BIN_DIR):
-	mkdir -p $(BIN_DIR)
+# === Crea le cartelle se mancano ===
+$(BIN_DIR) $(BUILD_DIR):
+	mkdir -p $@
 
 # === Clean ===
 clean:
