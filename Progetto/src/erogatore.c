@@ -9,12 +9,12 @@
 #include <errno.h>
 
 
-void issue_ticket(int sem_id, int msg_id) {
+void issue_ticket(int sem_id, int msg_id, int log_qid) {
     int ticket_counter = 1;
 
     while (1) {     
         /* 1. attesa inizio giornata (bloccante) */
-        sem_wait(sem_id, 0);
+        sv_sem_wait(sem_id, 0);
 
         /* 1.b  SUBITO dopo: fine simulazione?  */
         int v = semctl(sem_id, 2, GETVAL);
@@ -32,7 +32,7 @@ void issue_ticket(int sem_id, int msg_id) {
             ssize_t r = msgrcv(msg_id, &req, sizeof(req) - sizeof(long), MTYPE_REQUEST, IPC_NOWAIT);
 
             if (r != -1) {                       // richiesta presente
-                printf("[EROGATORE] Ticket %d per servizio %d (PID %d)\n", ticket_counter, req.service_type, req.pid);
+                log_sendf(log_qid, "[EROGATORE] Ticket %d per servizio %d (PID %d)\n", ticket_counter, req.service_type, req.pid);
 
                 erogatore_reply_msg rep = {
                     .mtype         = req.pid,
@@ -50,7 +50,7 @@ void issue_ticket(int sem_id, int msg_id) {
             }
 
             /* 2.b – fine simulazione durante la giornata? */
-            int t = sem_trywait(sem_id, 2);
+            int t = sv_sem_trywait(sem_id, 2);
 
             if (t == 1) return;
 
@@ -60,7 +60,7 @@ void issue_ticket(int sem_id, int msg_id) {
             }
 
             /* 2.c – fine giornata? */
-            int e = sem_trywait(sem_id, 1);
+            int e = sv_sem_trywait(sem_id, 1);
             if (e == 1) break;      /* giorno terminato */    
             else if (e == -1) {
                 perror("sem_trywait sem1"); 
@@ -78,6 +78,8 @@ void issue_ticket(int sem_id, int msg_id) {
 int main(int argc, char *argv[]) {
     setvbuf(stdout, NULL, _IOLBF, 0);   /* stdout line-buffered */
 
+    int log_qid = open_log_queue();
+
     key_t mq_key = get_queue_key(FTOK_PATH_EROG, MSG_QUEUE_ID_EROG);
     int msg_id = init_msg_queue(mq_key);
 
@@ -88,10 +90,10 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    sem_signal(sem_id, 3);  //ready
-    printf("[EROGATORE] Inizializzato e pronto a lavorare (PID %d)\n", getpid());
+    sv_sem_signal(sem_id, 3);  //ready
+    log_sendf(log_qid, "[EROGATORE] Inizializzato e pronto a lavorare (PID %d)\n", getpid());
     
-    issue_ticket(sem_id, msg_id);
+    issue_ticket(sem_id, msg_id, log_qid);
 
     return 0;
 }

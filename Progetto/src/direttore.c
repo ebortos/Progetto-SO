@@ -12,7 +12,7 @@
 #include <signal.h>
 #include <sys/sem.h>
 
-#define NUM_PROCESSI (1 + config.NOF_USERS + config.NOF_WORKER_SEATS + config.NOF_WORKERS)
+#define NUM_PROCESSI (2 + config.NOF_USERS /*+ config.NOF_WORKER_SEATS + config.NOF_WORKERS*/)
 
 typedef struct {
     int NOF_WORKERS;
@@ -117,53 +117,46 @@ void wait_children_ready(int sem_id, int n_ready) {
     printf("[DIRETTORE]   Attendo %d processi ready …\n", n_ready);
 
     for (int i = 0; i < n_ready; ++i)         /* blocca finché ognuno non fa +1 */
-        sem_wait(sem_id, 3);
+        sv_sem_wait(sem_id, 3);
 
     printf("[DIRETTORE]   Tutti i figli sono ready\n");
 }
 
 static void sem_broadcast(int sem_id, int sem_num, int count) {
     for (int i = 0; i < count; ++i)
-        sem_signal(sem_id, sem_num);
+        sv_sem_signal(sem_id, sem_num);
 }
 
-void run_simulation(int sim_duration, long n_nano_secs, int sem_id, int n_broadcast) {
+void run_simulation(int sim_duration, long n_nano_secs, int sem_id, int n_broadcast, int log_qid) {
     struct timespec day = {
         .tv_sec = n_nano_secs / 1000000000,
         .tv_nsec = n_nano_secs % 1000000000
     };
 
     for (int d = 1; d <= sim_duration; d++) {
-        sem_set(sem_id, 0, 0);  //reset sem0
-        sem_set(sem_id, 1, 0);  //reset sem1
+        sv_sem_set(sem_id, 0, 0);  //reset sem0
+        sv_sem_set(sem_id, 1, 0);  //reset sem1
 
-        printf("[DIRETTORE] ======== Inizio giorno %d ========\n", d);
+        log_sendf(log_qid, "[DIRETTORE] ======== Inizio giorno %d ========\n", d);
         sem_broadcast(sem_id, 0, n_broadcast);    //segnale di inizio giornata, sem 0
 
         nanosleep(&day, NULL);
 
         sem_broadcast(sem_id, 1, n_broadcast);    //segnale di fine giornata, sem 1
-        printf("[DIRETTORE] ======== Fine giorno %d ==========\n", d);
+        log_sendf(log_qid, "[DIRETTORE] ======== Fine giorno %d ==========\n", d);
         //Salvare stats qui (credo)
     }
 
-     /* fine simulazione per TUTTI */
-    sem_set(sem_id, 2, 0);
+    /* fine simulazione per TUTTI */
+    sv_sem_set(sem_id, 2, 0);
     sem_broadcast(sem_id, 2, n_broadcast);
-
-    /* sveglia chiunque sia fermo su sem0 (di sicurezza) */
-    sem_broadcast(sem_id, 0, n_broadcast);
-
-    //Wait children
-    for (size_t i = 0; i < proc_table.n_pids; ++i) {
-        waitpid(proc_table.all_pids[i], NULL, 0);
-    }
+    sem_broadcast(sem_id, 0, n_broadcast);   /* sveglia chiunque sia fermo su sem0 (di sicurezza) */
 }
 
 
 
 //**************************************************//
-//per ora il main è principalmente usato per testare
+//main in costruzione
 //a meno di commenti "DEBUG" lasciare così che dovrebbe andare
 //**************************************************//
 int main() {
@@ -180,7 +173,7 @@ int main() {
 
     //Init array pid processi
     proc_table.n_pids = 0;
-    proc_table.all_pids = malloc(sizeof(pid_t) * proc_table.n_pids);
+    proc_table.all_pids = malloc(sizeof(pid_t) * NUM_PROCESSI);
 
     if (!proc_table.all_pids) {
         perror("malloc all_pids");
@@ -190,10 +183,17 @@ int main() {
     //Init semaphores
     key_t sem_key = ftok(FTOK_PATH_SEM, SEM_KEY_ID);
     int sem_id = create_semaphore_set(sem_key, 4);
+    
+    //Init msg queue logger
+    int log_qid = open_log_queue();
 
     //Init msg queue sportello
     key_t spor_queue_key = get_queue_key(FTOK_PATH_SPOR, MSG_QUEUE_ID_SPOR);
     int spor_msg_id = init_msg_queue(spor_queue_key);
+
+    //Logger
+    create_processes("./logger", 1, proc_table.all_pids, proc_table.n_pids);
+    proc_table.n_pids += 1;
 
     //Erogatore
     create_processes("./erogatore", 1, proc_table.all_pids, proc_table.n_pids);
@@ -213,11 +213,23 @@ int main() {
 */
 
     wait_children_ready(sem_id, proc_table.n_pids);     //direttore aspetta che i figli siano tutti pronti
-    run_simulation(config.SIM_DURATION, config.N_NANO_SECS, sem_id, proc_table.n_pids);
+    run_simulation(config.SIM_DURATION, config.N_NANO_SECS, sem_id, (proc_table.n_pids - 1), log_qid);
 
-    //Cleanup malloc
+    //wait children (except logger -> i = 1)
+    for (size_t i = 1; i < proc_table.n_pids; ++i) {
+        waitpid(proc_table.all_pids[i], NULL, 0);
+    }
+
+    //close logger
+    log_sendf(log_qid, "[DIRETTORE] ======== Fine simulazione ========\n");
+    log_send_shutdown(log_qid);
+
+    //wait logger
+    waitpid(proc_table.all_pids[0], NULL, 0);
+
+    //cleanup
+    cleanup_all_ipc();
     free(proc_table.all_pids);
-    printf("[DIRETTORE] ======== Fine simulazione ========\n");
 
     return 0;
 }
