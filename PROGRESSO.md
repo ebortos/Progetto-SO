@@ -20,13 +20,14 @@
 - capire che stracazzo significa il paragrafo 5.6 della consegna, in particolare la parte sui conf (forse guardare la lezione di presentazione del progetto di schifanella può essere d'aiuto, ora non ho voglia), in caso cambiare (easy) lettura dei file in direttore __(si può lasciare anche per dopo)__
 - (eventualmente) assegnare numeri più facili al nome degli utenti (magari salvando il pid di ciascuno durante la creazione in un array e chiamandoli con il proprio indice)
 - __ALLA FINE:__ guardare utils.c e rimuovere tutte le funzioni non utilizzate
-- aggiungere decisione utente se andare alle poste o no
+- aggiungere decisione utente se andare alle poste o no, l'utente può chiedere più ticket durante la simulazione
 - aggiungere semafori sportello
 
 ## Cose da fixare/controllare
 
 - le stampe di conferma di erogatore sono leggermente sballate (ne stampa poche)
 - logger non stampa shutdown finale
+- aggiustare passaggio argomenti utente a create_processes (con cast del config se necessario, meglio di no se possibile)
 - Quando l'utente riceve il ticket, il numero del ticket sembra quasi casuale (da 1 a 5, sperimentale). Ogni nuova prova dovrebbe sempre far partire i ticket da 1 __SOLUZIONE:__ il problema probabilmente sta nel fatto che durante il debug le msgqueue vecchie non venivano chiuse, si risolve chiudendole nel direttore alla fine della simulazione
 - capire come memorizzare questi dati _"le statistiche precedenti suddivise per tipologia di servizio"_ __(si può lasciare anche per dopo)__
 
