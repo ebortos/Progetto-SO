@@ -131,7 +131,7 @@ void sv_sem_set(int sem_id, int sem_num, int value) {
 }
 
 //Logger
-int open_log_queue(void) {
+int open_log_queue() {
     key_t key = get_queue_key(FTOK_PATH_LOG, MSG_QUEUE_ID_LOG);
     return init_msg_queue(key);
 }
