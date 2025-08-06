@@ -41,6 +41,11 @@ int try_receive_reply(int msg_id, pid_t pid, int *ticket_out) {
     return 1;
 }
 
+int user_rand_decision() {
+    srand(time(NULL));
+    
+}
+
 static void run_utente(int sem_id, int msg_id, int log_qid) {
     const pid_t me = getpid();
     int request_sent = 0;      /* inviamo UNA richiesta totale */
@@ -52,6 +57,9 @@ static void run_utente(int sem_id, int msg_id, int log_qid) {
     while (1) {
         /* 1) attesa inizio giornata (bloccante) */
         sv_sem_wait(sem_id, 0);
+
+        if(user_rand_decision() == 0)
+            break;
 
         /* subito dopo: fine simulazione? (non consumiamo sem2) */
         int v = semctl(sem_id, 2, GETVAL);

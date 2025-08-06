@@ -32,7 +32,7 @@ typedef struct {
 } process_table_t;
 
 extern char **environ;     //per execve
-process_table_t proc_table;
+process_table_t proc_table; //forse si può spostare
 
 //legge il config e salva nella struct config_t
 int load_config(const char *fname, config_t *config) {
@@ -75,17 +75,15 @@ int load_config(const char *fname, config_t *config) {
 
 //PID = PORCO IL DIO
 
-int create_processes(const char *exec_path, int count, pid_t *pid_array, int start_index) {
-    char *argv[] = {(char *)exec_path, NULL};
-
+int create_processes(const char *exec_path, int count, pid_t *pid_array, int start_index, char *argv) {
     for (int i = 0; i < count; i++) {
-        pid_t pid = fork();
+        pid_t pid = fork(); 
 
         if (pid < 0) {
             perror("fork");
             exit(EXIT_FAILURE);
         } else if (pid == 0) {
-            if (execve(exec_path, argv, environ) == -1) {
+            if (execve(exec_path, &argv, environ) == -1) {
                 perror("execve");
                 exit(EXIT_FAILURE);
             }
@@ -192,15 +190,18 @@ int main() {
     int spor_msg_id = init_msg_queue(spor_queue_key);
 
     //Logger
-    create_processes("./logger", 1, proc_table.all_pids, proc_table.n_pids);
+    char *args[] = {(char *)"./logger", NULL};
+    create_processes("./logger", 1, proc_table.all_pids, proc_table.n_pids, *args);
     proc_table.n_pids += 1;
 
     //Erogatore
-    create_processes("./erogatore", 1, proc_table.all_pids, proc_table.n_pids);
+    *args = {(char *)"./erogatore", NULL};
+    create_processes("./erogatore", 1, proc_table.all_pids, proc_table.n_pids, *args);
     proc_table.n_pids += 1;
 
     //Utente
-    create_processes("./utente", config.NOF_USERS, proc_table.all_pids, proc_table.n_pids);
+    *args = {(char *)"./utente", (char)config.P_SERV_MIN, (char)config.P_SERV_MAX, NULL};
+    create_processes("./utente", config.NOF_USERS, proc_table.all_pids, proc_table.n_pids, *args);
     proc_table.n_pids += config.NOF_USERS;
 /*
     //Sportello
