@@ -75,7 +75,7 @@ int load_config(const char *fname, config_t *config) {
 
 //PID = PORCO IL DIO
 
-int create_processes(const char *exec_path, int count, pid_t *pid_array, int start_index, char *argv) {
+int create_processes(const char *exec_path, int count, pid_t *pid_array, int start_index, char *const argv[]) {
     for (int i = 0; i < count; i++) {
         pid_t pid = fork(); 
 
@@ -83,7 +83,7 @@ int create_processes(const char *exec_path, int count, pid_t *pid_array, int sta
             perror("fork");
             exit(EXIT_FAILURE);
         } else if (pid == 0) {
-            if (execve(exec_path, &argv, environ) == -1) {
+            if (execve(exec_path, argv, environ) == -1) {
                 perror("execve");
                 exit(EXIT_FAILURE);
             }
@@ -190,18 +190,21 @@ int main() {
     int spor_msg_id = init_msg_queue(spor_queue_key);
 
     //Logger
-    char *args[] = {(char *)"./logger", NULL};
-    create_processes("./logger", 1, proc_table.all_pids, proc_table.n_pids, *args);
+    char *const args_logger[] = {(char *)"./logger", NULL};
+    create_processes("./logger", 1, proc_table.all_pids, proc_table.n_pids, args_logger);
     proc_table.n_pids += 1;
 
     //Erogatore
-    *args = {(char *)"./erogatore", NULL};
-    create_processes("./erogatore", 1, proc_table.all_pids, proc_table.n_pids, *args);
+    char *const args_erogatore[] = {(char *)"./erogatore", NULL};
+    create_processes("./erogatore", 1, proc_table.all_pids, proc_table.n_pids, args_erogatore);
     proc_table.n_pids += 1;
 
     //Utente
-    *args = {(char *)"./utente", (char)config.P_SERV_MIN, (char)config.P_SERV_MAX, NULL};
-    create_processes("./utente", config.NOF_USERS, proc_table.all_pids, proc_table.n_pids, *args);
+    char p_serv_min[16], p_serv_max[16];
+    snprintf(p_serv_min, sizeof(p_serv_min), "%f", config.P_SERV_MIN);
+    snprintf(p_serv_max, sizeof(p_serv_max), "%f", config.P_SERV_MAX);
+    char *const args_utente[] = {(char *)"./utente", p_serv_min, p_serv_max, NULL};
+    create_processes("./utente", config.NOF_USERS, proc_table.all_pids, proc_table.n_pids, args_utente);
     proc_table.n_pids += config.NOF_USERS;
 /*
     //Sportello
