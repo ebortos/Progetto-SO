@@ -185,6 +185,10 @@ int main() {
     //Init msg queue logger
     int log_qid = open_log_queue();
 
+    //Fresh init msg queue erogatore
+    key_t erog_key = get_queue_key(FTOK_PATH_EROG, MSG_QUEUE_ID_EROG);
+    int erog_mq = init_msg_queue_fresh(erog_key);
+
     //Init msg queue sportello
     key_t spor_queue_key = get_queue_key(FTOK_PATH_SPOR, MSG_QUEUE_ID_SPOR);
     int spor_msg_id = init_msg_queue(spor_queue_key);

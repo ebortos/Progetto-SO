@@ -24,6 +24,48 @@ int init_msg_queue(key_t key) {
     return msg_id;
 }
 
+/* Remove the queue if it exists, then recreate it empty.
+   Use this ONCE at startup (best: in the director, before forking). */
+int init_msg_queue_fresh(key_t key) {
+    /* Try create exclusively: if it works, it's brand new. */
+    int id = msgget(key, IPC_CREAT | IPC_EXCL | 0666);
+    if (id != -1) return id;
+
+    if (errno != EEXIST) {
+        perror("msgget (fresh, create excl)");
+        exit(EXIT_FAILURE);
+    }
+
+    /* It already exists: remove it. */
+    int old = msgget(key, 0);
+    if (old != -1) {
+        if (msgctl(old, IPC_RMID, NULL) == -1) {
+            perror("msgctl IPC_RMID (fresh)");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    /* Recreate. Tiny retry loop to be robust against races. */
+    for (int i = 0; i < 4; ++i) {
+        id = msgget(key, IPC_CREAT | IPC_EXCL | 0666);
+        if (id != -1) return id;
+
+        if (errno != EEXIST) {
+            perror("msgget (fresh, recreate)");
+            exit(EXIT_FAILURE);
+        }
+        /* Another process recreated it between remove and create; remove again. */
+        old = msgget(key, 0);
+        if (old != -1) {
+            msgctl(old, IPC_RMID, NULL);
+        }
+    }
+
+    fprintf(stderr, "init_msg_queue_fresh: failed to recreate queue\n");
+    exit(EXIT_FAILURE);
+}
+
+
 key_t get_queue_key(const char *path, char id) {
     key_t key = ftok(path, id);
 
