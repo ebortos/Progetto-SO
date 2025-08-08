@@ -42,8 +42,8 @@ int try_receive_reply(int msg_id, pid_t pid, int *ticket_out) {
 }
 
 //se l'utente vuole andare alle poste ritorna 1
-int utente_rand_decision(int p_serv_min, int p_serv_max) {
-    float p_serv = p_serv_min + ((float)rand() / RAND_MAX) * (p_serv_max - p_serv_max);
+int utente_rand_decision(float p_serv_min, float p_serv_max) {
+    float p_serv = p_serv_min + ((float)rand() / RAND_MAX) * (p_serv_max - p_serv_min);
     float roll = (float)rand() / RAND_MAX;
     return (roll < p_serv) ? 1 : 0;
 }
@@ -60,13 +60,13 @@ static void run_utente(int sem_id, int msg_id, int log_qid, int p_serv_min, int 
         /* 1) attesa inizio giornata (bloccante) */
         sv_sem_wait(sem_id, 0);
 
-        /*if(utente_rand_decision(p_serv_min, p_serv_max)==0){
+        if(utente_rand_decision(p_serv_min, p_serv_max)==1){
             log_sendf(log_qid, "[UTENTE %d] oggi non vado alle poste troppo sbatti\n", me, my_ticket);
             break;
         }
         else
             log_sendf(log_qid, "[UTENTE %d] sai che c'e', oggi ci vado alle poste\n", me, my_ticket);
-        //decidere se avvertire quando l'utente non si reca alle poste*/
+        //decidere se avvertire quando l'utente non si reca alle poste
 
         /* subito dopo: fine simulazione? (non consumiamo sem2) */
         int v = semctl(sem_id, 2, GETVAL);
@@ -123,8 +123,6 @@ static void run_utente(int sem_id, int msg_id, int log_qid, int p_serv_min, int 
 
 int main(int argc, char *argv[]) {
     setvbuf(stdout, NULL, _IOLBF, 0);  /* stdout line-buffered per debug */
-
-    srand(time(NULL));
 
     int log_qid = open_log_queue();
 
