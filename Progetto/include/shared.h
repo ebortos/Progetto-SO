@@ -69,6 +69,7 @@ enum {
 };
 
 int init_msg_queue(key_t key);
+int init_msg_queue_fresh(key_t key); 
 key_t get_queue_key(const char *path, char id);
 void remove_msg_queue(key_t key);
 
