@@ -14,6 +14,7 @@
 -__SEMAFORI:__0 = inizio giornata, 1 = fine giornata, 2 = fine sim, 3 = ready-barrier per i figli (dir aspetta che siano tutti inizializzati prima di proseguire con il primo giorno)
 - rinominate le funzioni utils dei sem a sv_sem_.... per evitare ambiguità con le funzioni posix (in particolare per sem_wait)
 - aggiunto logger.c: tutti i processi per stampare mandano tramite un msg queue al logger il messaggio che poi li stampa in ordine
+- aggiunta shared memory tra direttore e utente per comunicare gli sportelli disponibili del giorno con i relativi servizi
 
 ## TO-DO
 
@@ -21,15 +22,17 @@
 - (eventualmente) assegnare numeri più facili al nome degli utenti (magari salvando il pid di ciascuno durante la creazione in un array e chiamandoli con il proprio indice)
 - __ALLA FINE:__ guardare utils.c e rimuovere tutte le funzioni non utilizzate
 - aggiungere decisione utente se andare alle poste o no, l'utente può chiedere più ticket durante la simulazione ?apposto?
-- aggiungere semafori sportello
+- __important__ cambiare tutte le chiamate di funzione per creare ipc con una funzione dedicata (es: vedere open_log_queue())__(si può lasciare anche per dopo)__
 
 ## Cose da fixare/controllare
 
+- __aggiustare shm direttore e cleanupall ipcs ora sono di fretta gay__
 - le stampe di conferma di erogatore sono leggermente sballate (ne stampa poche)
 - logger non stampa shutdown finale
 - aggiustare passaggio argomenti utente a create_processes (con cast del config se necessario, meglio di no se possibile) ?apposto?
 - Quando l'utente riceve il ticket, il numero del ticket sembra quasi casuale (da 1 a 5, sperimentale). Ogni nuova prova dovrebbe sempre far partire i ticket da 1 __SOLUZIONE:__ il problema probabilmente sta nel fatto che durante il debug le msgqueue vecchie non venivano chiuse, si risolve chiudendole nel direttore alla fine della simulazione
 - capire come memorizzare questi dati _"le statistiche precedenti suddivise per tipologia di servizio"_ __(si può lasciare anche per dopo)__
+- capire se il controllo sem4 ha senso durante la giornata (after wake), __(si può lasciare anche per dopo)__
 
 ## Cose fatte E testate
 
@@ -42,3 +45,5 @@
 - Semafori utente
 - Logger
 - Pulizia ipcs
+- Utente ora può chiedere più ticket durante la sim
+- Semafori sportello
