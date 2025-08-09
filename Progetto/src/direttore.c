@@ -218,6 +218,7 @@ int main() {
 
     //Operatore
     create_processes("./operatore", config.NOF_WORKERS, proc_table.all_pids, pid_array_index_offset);
+    // pid_array_index_offset chi è costui?
 */
 
     wait_children_ready(sem_id, proc_table.n_pids);     //direttore aspetta che i figli siano tutti pronti
