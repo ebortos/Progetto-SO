@@ -33,6 +33,7 @@ typedef struct {
 
 extern char **environ;     //per execve
 process_table_t proc_table; //forse si può spostare
+config_t config;
 
 //legge il config e salva nella struct config_t
 int load_config(const char *fname, config_t *config) {
@@ -95,7 +96,19 @@ int create_processes(const char *exec_path, int count, pid_t *pid_array, int sta
     return 0;
 }
 
-void assign_service_sportello(int msg_id, int num_sportelli) {
+/* Spawns N sportelli, argv[1] = sportello id (0..N-1) */
+static int create_sportelli(int n, pid_t *pid_array, int start_index) {
+    for (int i = 0; i < n; ++i) {
+        char idbuf[16];
+        snprintf(idbuf, sizeof idbuf, "%d", i);
+
+        char *const argv_sportello[] = { (char *)"./sportello", idbuf, NULL };
+        create_processes("./sportello", 1, pid_array, start_index + i, argv_sportello);
+    }
+    return 0;
+}
+
+void assign_service_sportello(int msg_id, int num_sportelli, int log_qid) {
     for (int i = 0; i < num_sportelli; i++) {
         sportello_msg_t msg;
         msg.mtype = 1000 + i;       //1000 arbitrario per differenziare i msg
@@ -107,7 +120,7 @@ void assign_service_sportello(int msg_id, int num_sportelli) {
             exit(EXIT_FAILURE);
         }
 
-        printf("[Direttore] Assegnato servizio %d a sportello %d\n", msg.sportello_info.service_type, i);
+        //log_sendf(log_qid, "[Direttore] Assegnato servizio %d a sportello %d\n", msg.sportello_info.service_type, i);
     }
 }
 
@@ -125,7 +138,33 @@ static void sem_broadcast(int sem_id, int sem_num, int count) {
         sv_sem_signal(sem_id, sem_num);
 }
 
-void run_simulation(int sim_duration, long n_nano_secs, int sem_id, int n_broadcast, int log_qid) {
+static void build_day_plan(int day, int n_sportelli, int spor_msg_qid, day_plan_t *plan)
+{
+    // reset plan
+    memset(plan->counts, 0, sizeof(plan->counts));
+    //plan->day = day;      se si decide di aggiungerlo
+
+    for (int i = 0; i < n_sportelli; ++i) {
+        int service = rand() % NUM_SERVICES;  // your policy can change
+
+        // bump availability
+        plan->counts[service]++;
+
+        // notify sportello i of its assignment for today
+        sportello_msg_t msg;
+        msg.mtype = 1000 + i;                 // each sportello listens on 1000+id
+        msg.sportello_info.service_type = service;
+        msg.sportello_info.occupato     = 0;
+        msg.sportello_info.operatore_id = -1;
+
+        if (msgsnd(spor_msg_qid, &msg, sizeof(sportello_t), 0) == -1) {
+            perror("msgsnd direttore->sportello");
+            exit(EXIT_FAILURE);
+        }
+    }
+}
+
+void run_simulation(int sim_duration, long n_nano_secs, int sem_id, int n_broadcast, int log_qid, int spor_msg_qid, int n_sportelli, day_plan_t *plan) {
     struct timespec day = {
         .tv_sec = n_nano_secs / 1000000000,
         .tv_nsec = n_nano_secs % 1000000000
@@ -135,8 +174,11 @@ void run_simulation(int sim_duration, long n_nano_secs, int sem_id, int n_broadc
         sv_sem_set(sem_id, 0, 0);  //reset sem0
         sv_sem_set(sem_id, 1, 0);  //reset sem1
 
+        build_day_plan(d, n_sportelli, spor_msg_qid, plan);
+
         log_sendf(log_qid, "[DIRETTORE] ======== Inizio giorno %d ========\n", d);
         sem_broadcast(sem_id, 0, n_broadcast);    //segnale di inizio giornata, sem 0
+        assign_service_sportello(spor_msg_qid, config.NOF_WORKER_SEATS, log_qid);
 
         nanosleep(&day, NULL);
 
@@ -152,14 +194,9 @@ void run_simulation(int sim_duration, long n_nano_secs, int sem_id, int n_broadc
 }
 
 
-
-//**************************************************//
 //main in costruzione
 //a meno di commenti "DEBUG" lasciare così che dovrebbe andare
-//**************************************************//
 int main() {
-    config_t config;
-
     setvbuf(stdout, NULL, _IOLBF, 0);   /* stdout line-buffered */
 
     srand(time(NULL) ^ getpid());
@@ -191,7 +228,21 @@ int main() {
 
     //Init msg queue sportello
     key_t spor_queue_key = get_queue_key(FTOK_PATH_SPOR, MSG_QUEUE_ID_SPOR);
-    int spor_msg_id = init_msg_queue(spor_queue_key);
+    int spor_msg_qid = init_msg_queue(spor_queue_key);
+
+    // service/done queues (so they exist before children)
+    int serv_qid = init_msg_queue_fresh(get_queue_key(FTOK_PATH_SERV, MSG_QUEUE_ID_SERV));
+    (void)serv_qid;
+    int done_qid = init_msg_queue(get_queue_key(FTOK_PATH_DONE, MSG_QUEUE_ID_DONE));
+    (void)done_qid;
+
+    /* === day plan SHM (RW) === */
+    int plan_shmid = shm_plan_create_or_get();     // implement in utils as: ftok + shmget(IPC_CREAT|0666, sizeof(day_plan_t))
+    day_plan_t *plan = shm_plan_attach_ro(plan_shmid);
+    memset(plan, 0, sizeof(*plan));               // clear once
+
+
+    //======= SPAWN PROCESSES ========//
 
     //Logger
     char *const args_logger[] = {(char *)"./logger", NULL};
@@ -210,19 +261,18 @@ int main() {
     char *const args_utente[] = {(char *)"./utente", p_serv_min, p_serv_max, NULL};
     create_processes("./utente", config.NOF_USERS, proc_table.all_pids, proc_table.n_pids, args_utente);
     proc_table.n_pids += config.NOF_USERS;
-/*
-    //Sportello
-    create_processes("./sportello", config.NOF_WORKER_SEATS, proc_table.all_pids, pid_array_index_offset);
-    pid_index += config.NOF_WORKER_SEATS;
-    assign_service_sportello(spor_msg_id, config.NOF_WORKER_SEATS);
 
+    //Sportello
+    create_sportelli(config.NOF_WORKER_SEATS, proc_table.all_pids, proc_table.n_pids);
+    proc_table.n_pids += config.NOF_WORKER_SEATS;
+/*
     //Operatore
     create_processes("./operatore", config.NOF_WORKERS, proc_table.all_pids, pid_array_index_offset);
-    // pid_array_index_offset chi è costui?
+    // pid_array_index_offset chi è costui? un tipo losco
 */
 
     wait_children_ready(sem_id, proc_table.n_pids);     //direttore aspetta che i figli siano tutti pronti
-    run_simulation(config.SIM_DURATION, config.N_NANO_SECS, sem_id, (proc_table.n_pids - 1), log_qid);
+    run_simulation(config.SIM_DURATION, config.N_NANO_SECS, sem_id, (proc_table.n_pids - 1), log_qid, spor_msg_qid, config.NOF_WORKER_SEATS, plan);
 
     //wait children (except logger -> i = 1)
     for (size_t i = 1; i < proc_table.n_pids; ++i) {
@@ -232,11 +282,11 @@ int main() {
     //close logger
     log_sendf(log_qid, "[DIRETTORE] ======== Fine simulazione ========\n");
     log_send_shutdown(log_qid);
-
-    //wait logger
     waitpid(proc_table.all_pids[0], NULL, 0);
 
     //cleanup
+    shm_plan_detach(plan);
+
     cleanup_all_ipc();
     free(proc_table.all_pids);
 

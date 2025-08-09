@@ -19,6 +19,15 @@
 #define FTOK_PATH_SEM "../tmp/ipc_sem_key"
 #define SEM_KEY_ID 'C'
 
+#define FTOK_PATH_SERV   "../tmp/ftok_service"   /* queue: utente -> sportello */
+#define FTOK_PATH_DONE   "../tmp/ftok_done"      /* queue: sportello -> utente */
+#define MSG_QUEUE_ID_SERV  'S'
+#define MSG_QUEUE_ID_DONE  'D'
+
+#define NUM_SERVICES 6
+#define FTOK_PATH_PLAN "../tmp/ftok_plan"
+#define SHM_PLAN_ID    'P'
+
 //tipologie servizi (da verificare se è utlizzato da più file, altrimenti recluderlo nell'unico bastardo che lo usa)
 typedef enum {
     PACCHI = 0,
@@ -45,12 +54,20 @@ typedef struct {
     long mtype;
     int service_type;
     pid_t pid;              //pid del richiedente
+    int ticket_number;      //0 when asking erogatore; set when queueing for sportello
 } erogatore_request_msg;
 
 typedef struct {
     long mtype;
     int ticket_number;
+    int service_type;
+    //int  served_ok;      1=served, 0=failed (if you need) statistiche?
 } erogatore_reply_msg;
+
+typedef struct {
+    int counts[NUM_SERVICES];   // how many sportelli serve each service today
+    //int day;                     optional: current sim day | statistiche?
+} day_plan_t;
 
 union semun {
     int val;
@@ -85,5 +102,14 @@ int log_sendf(int log_qid, const char *fmt, ...);
 int log_send_shutdown(int log_qid);
 
 void cleanup_all_ipc(void);
+int purge_queue_all(int qid);
+
+int open_service_queue(void);
+int open_done_queue(void);
+
+int shm_plan_get_existing(void);      // shmget without creating (users)
+int shm_plan_create_or_get(void);     // director (create or get)
+day_plan_t* shm_plan_attach_ro(int shmid);
+void shm_plan_detach(const day_plan_t *p);
 
 #endif

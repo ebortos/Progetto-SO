@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <sys/ipc.h>
 #include <sys/msg.h>
+#include <sys/shm.h>
 #include <unistd.h>
 #include <signal.h>
 #include <sys/sem.h>
@@ -210,4 +211,50 @@ void cleanup_all_ipc(void) {
     remove_msg_queue(k_spor);
 
     remove_semaphore_set(k_sem);
+}
+
+int open_service_queue(void) {
+    key_t k = get_queue_key(FTOK_PATH_SERV, MSG_QUEUE_ID_SERV);
+    return init_msg_queue(k);
+}
+
+int open_done_queue(void) {
+    key_t k = get_queue_key(FTOK_PATH_DONE, MSG_QUEUE_ID_DONE);
+    return init_msg_queue(k);
+}
+
+/* Remove every message currently in the queue (non-blocking). Returns count removed. */
+int purge_queue_all(int qid) {
+    int removed = 0;
+
+    while (1) {
+        char buf[256];
+        ssize_t r = msgrcv(qid, buf, sizeof(buf), 0, IPC_NOWAIT);
+        
+        if (r == -1) {
+            if (errno == ENOMSG) break;
+            perror("msgrcv purge"); break;
+        }
+        removed++;
+    }
+    return removed;
+}
+
+//Shared memory
+int shm_plan_get_existing(void) {
+    key_t k = ftok(FTOK_PATH_PLAN, SHM_PLAN_ID);
+    if (k == -1) { perror("ftok plan"); exit(EXIT_FAILURE); }
+    int id = shmget(k, 0, 0);  // no IPC_CREAT here
+    if (id == -1) { perror("shmget plan (get)"); exit(EXIT_FAILURE); }
+    return id;
+}
+
+day_plan_t* shm_plan_attach_ro(int shmid) {
+    void *p = shmat(shmid, NULL, SHM_RDONLY);
+    if (p == (void *)-1) { perror("shmat plan ro"); exit(EXIT_FAILURE); }
+    return (day_plan_t*)p;
+}
+
+void shm_plan_detach(const day_plan_t *p) {
+    if (p) shmdt((const void*)p);
 }
