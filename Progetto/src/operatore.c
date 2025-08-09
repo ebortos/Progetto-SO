@@ -13,10 +13,6 @@ static void run_operatore(int sem_id, int msg_id, int log_qid) {
 }
 
 int main(int argc, char *argv[]) {
-    /*if (argc > 1) {
-        printf("OPERATORE TEST (OK?): %s\n", argv[1]);
-    }
-    return 0;*/
     //ci sono argomenti da passare?
 
     setvbuf(stdout, NULL, _IOLBF, 0);
