@@ -10,7 +10,7 @@
 void issue_ticket(int sem_id, int msg_id, int log_qid) {
     int ticket_counter = 1;
 
-    for (;;) {
+    while (1) {
         /* 1) wait start-of-day (blocking) */
         sv_sem_wait(sem_id, 0);
 
@@ -24,23 +24,22 @@ void issue_ticket(int sem_id, int msg_id, int log_qid) {
             int processed = 0;
 
             /* Drain: read all requests currently in the queue */
-            for (;;) {
+            while (1) {
                 erogatore_request_msg req;
-                ssize_t r = msgrcv(msg_id, &req, sizeof(req) - sizeof(long),
-                                   MTYPE_REQUEST, IPC_NOWAIT);
+                ssize_t r = msgrcv(msg_id, &req, MSGSZ(erogatore_request_msg), MTYPE_REQUEST, IPC_NOWAIT);
                 if (r == -1) {
                     if (errno == ENOMSG) break;     /* nothing left right now */
-                    perror("msgrcv"); exit(EXIT_FAILURE);
+                    perror("msgrcv erog"); exit(EXIT_FAILURE);
                 }
 
-                log_sendf(log_qid, "[EROGATORE] Ticket %d per servizio %d (PID %d)\n",
-                          ticket_counter, req.service_type, req.pid);
+                log_sendf(log_qid, "[EROGATORE] Ticket %d per servizio %d (PID %d)\n", ticket_counter, req.service_type, req.pid);
 
-                erogatore_reply_msg rep = {
-                    .mtype         = req.pid,
-                    .ticket_number = ticket_counter++
-                };
-                if (msgsnd(msg_id, &rep, sizeof(rep) - sizeof(long), 0) == -1) {
+                erogatore_reply_msg rep = {0};
+                rep.mtype         = req.pid;
+                rep.ticket_number = ticket_counter++;
+                rep.service_type  = req.service_type;
+
+                if (msgsnd(msg_id, &rep, MSGSZ(erogatore_reply_msg), 0) == -1) {
                     perror("msgsnd"); exit(EXIT_FAILURE);
                 }
                 processed++;

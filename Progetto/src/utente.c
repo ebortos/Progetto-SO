@@ -15,7 +15,7 @@ static int send_ticket_request(int erog_qid, pid_t pid, int service_type, int lo
     req.pid          = pid;
     req.ticket_number = 0;
 
-    if (msgsnd(erog_qid, &req, sizeof(req) - sizeof(long), 0) == -1) {
+    if (msgsnd(erog_qid, &req, MSGSZ(erogatore_request_msg), 0) == -1) {
         perror("msgsnd (utente->erogatore)");
         return -1;
     }
@@ -25,22 +25,35 @@ static int send_ticket_request(int erog_qid, pid_t pid, int service_type, int lo
 }
 
 //prova a ricevere una risposta da msgq
-static int try_receive_by_pid(int qid, pid_t pid, int *ticket_out) {
+static int try_receive_by_pid(int qid, pid_t pid, int *ticket_out, int *service_out) {
     erogatore_reply_msg rep;
-    ssize_t r = msgrcv(qid, &rep, sizeof(rep) - sizeof(long), pid, IPC_NOWAIT);
-    if (r == -1) { if (errno == ENOMSG) return 0; perror("msgrcv by_pid"); exit(EXIT_FAILURE); }
+    ssize_t r = msgrcv(qid, &rep, MSGSZ(erogatore_reply_msg), pid, IPC_NOWAIT);
+
+    if (r == -1) { 
+        if (errno == ENOMSG) return 0; perror("msgrcv by_pid"); exit(EXIT_FAILURE); 
+        if (errno == E2BIG) {
+            // This means someone sent a larger payload than we expected on this queue.
+            fprintf(stderr, "[FATAL] E2BIG on qid=%d (pid=%d). Check struct/size mismatch for this queue.\n",
+                    qid, (int)pid);
+        }    
+    }
+    
+
     if (ticket_out) *ticket_out = rep.ticket_number;
+    if (service_out) *service_out = rep.service_type;
+
     return 1;
 }
 
 //utente si mette in coda allo sportello
-static int enqueue_service_line(int serv_qid, pid_t pid, int service_type) {
-    erogatore_request_msg s;
-    s.mtype         = service_type + 1;   /* routing by service */
-    s.service_type = service_type;
+static int enqueue_service_line(int serv_qid, pid_t pid, int ticket_number, int service_type) {
+    erogatore_request_msg s = {0};
+    s.mtype         = (long)service_type + 1;  // route by service
+    s.service_type  = service_type;
     s.pid           = pid;
+    s.ticket_number = ticket_number;
 
-    if (msgsnd(serv_qid, &s, sizeof(s) - sizeof(long), 0) == -1) {
+    if (msgsnd(serv_qid, &s, MSGSZ(erogatore_request_msg), 0) == -1) {
         perror("msgsnd (utente->service line)");
         return -1;
     }
@@ -95,22 +108,27 @@ static void run_utente(int sem_id, int erog_qid, int serv_qid, int done_qid, int
 
             if (asked_ticket && !got_ticket) {
                 int tno = -1, st = -1;
-                if (try_receive_by_pid(erog_qid, me, &my_ticket) == 1) {
+                if (try_receive_by_pid(erog_qid, me, &tno, &st) == 1) {
                     my_ticket  = tno;
-                    got_ticket = 1;
-                    did_something = 1;
+                    if (st >= 0) my_service = st;
+
+                    log_sendf(log_qid, "[DBG] got ticket=%d svc=%d pid=%d\n", my_ticket, my_service, (int)me);
 
                     /* queue to sportello line for my service */
-                    if (enqueue_service_line(serv_qid, me, my_service) == 0)
+                    if (enqueue_service_line(serv_qid, me, my_ticket, my_service) == 0) {
+                        log_sendf(log_qid, "[DBG] enqueue ticket=%d svc=%d pid=%d\n", my_ticket, my_service, (int)me);
+                        got_ticket = 1;
                         queued_sp = 1;
+                    }
                 }
             }
 
             if (queued_sp && !served) {
-                if (try_receive_by_pid(done_qid, me, NULL) == 1) {
+                int fin_ticket = -1, fin_serv = -1;
+
+                if (try_receive_by_pid(done_qid, me, &fin_ticket, &fin_serv) == 1) {
                     served = 1;
-                    did_something = 1;
-                    log_sendf(log_qid, "[UTENTE %d] Servito", (int)me);
+                    log_sendf(log_qid, "[UTENTE %d] Servito\n", (int)me);
                 }
             }
 

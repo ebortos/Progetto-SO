@@ -11,7 +11,7 @@
 //riceve servizio da direttore
 static int try_receive_assignment(int spor_qid, int spor_id, sportello_t *out) {
     sportello_msg_t m;
-    ssize_t r = msgrcv(spor_qid, &m, sizeof(m) - sizeof(long), 1000 + spor_id, IPC_NOWAIT);
+    ssize_t r = msgrcv(spor_qid, &m, MSGSZ(sportello_msg_t), (1000 + spor_id), IPC_NOWAIT);
     if (r == -1) {
         if (errno == ENOMSG) return 0;
         perror("msgrcv assignment (sportello)");

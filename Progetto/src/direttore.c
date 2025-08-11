@@ -102,11 +102,16 @@ static int create_sportelli(int n, pid_t *pid_array, int start_index) {
 }
 
 static void create_operatori() {
+    char nsbuf[32];
+    snprintf(nsbuf, sizeof nsbuf, "%d", config.N_NANO_SECS);
+
     for (int i = 0; i < config.NOF_WORKERS; ++i) {
         int svc = rand() % NUM_SERVICES;
 
-        char svcbuf[16]; snprintf(svcbuf, sizeof svcbuf, "%d", svc);
-        char *const args_op[] = { (char*)"./operatore", svcbuf, NULL };
+        char svcbuf[16];
+        snprintf(svcbuf, sizeof svcbuf, "%d", svc);
+
+        char *const args_op[] = { (char *)"./operatore", svcbuf, nsbuf, NULL };
 
         create_processes("./operatore", 1, proc_table.all_pids, proc_table.n_pids + i, args_op);
     }
@@ -128,6 +133,7 @@ static void sem_broadcast(int sem_id, int sem_num, int count) {
 
 static void assign_service_sportello(int day, int n_sportelli, int spor_msg_qid, day_plan_t *plan) {
     memset(plan->counts, 0, sizeof(plan->counts));
+    
 
     for (int i = 0; i < n_sportelli; ++i) {
         int service = rand() % NUM_SERVICES;
@@ -140,17 +146,19 @@ static void assign_service_sportello(int day, int n_sportelli, int spor_msg_qid,
         msg.sportello_info.operatore_id = -1;
 
         /* IMPORTANT: size is payload excluding long mtype */
-        if (msgsnd(spor_msg_qid, &msg, sizeof(sportello_msg_t) - sizeof(long), 0) == -1) {
+        if (msgsnd(spor_msg_qid, &msg, MSGSZ(sportello_msg_t), 0) == -1) {
             perror("msgsnd direttore->sportello");
             exit(EXIT_FAILURE);
         }
     }
 }
 
-void run_simulation(int sim_duration, long n_nano_secs, int sem_id, int n_broadcast, int log_qid, int spor_msg_qid, int n_sportelli, day_plan_t *plan) {
+void run_simulation(int sim_duration, const long NANOS_SIM_MIN, int sem_id, int n_broadcast, int log_qid, int spor_msg_qid, int n_sportelli, day_plan_t *plan) {
+    const int DAY_SIM_MINUTES = 8 * 60;  // 8h
+
     struct timespec day = {
-        .tv_sec = n_nano_secs / 1000000000,
-        .tv_nsec = n_nano_secs % 1000000000
+        .tv_sec  = (NANOS_SIM_MIN * (long)DAY_SIM_MINUTES) / 1000000000L,
+        .tv_nsec = (NANOS_SIM_MIN * (long)DAY_SIM_MINUTES) % 1000000000L
     };
 
     for (int d = 1; d <= sim_duration; d++) {

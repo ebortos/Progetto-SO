@@ -32,6 +32,8 @@
 #define FTOK_PATH_PLAN "../tmp/ftok_plan"
 #define SHM_PLAN_ID    'P'
 
+#define MSGSZ(T) ((int)(sizeof(T) - sizeof(long)))
+
 //tipologie servizi (da verificare se è utlizzato da più file, altrimenti recluderlo nell'unico bastardo che lo usa)
 typedef enum {
     PACCHI = 0,
