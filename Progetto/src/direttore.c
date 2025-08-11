@@ -5,15 +5,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <sys/wait.h>
-#include <sys/msg.h>
 #include <time.h>
-#include <signal.h>
-#include <sys/sem.h>
-#include <sys/shm.h>
 
-#define NUM_PROCESSI (2 + config.NOF_USERS /*+ config.NOF_WORKER_SEATS + config.NOF_WORKERS*/)
+#define NUM_PROCESSI (2 + config.NOF_USERS + config.NOF_WORKER_SEATS + config.NOF_WORKERS)
 
 typedef struct {
     int NOF_WORKERS;
@@ -75,8 +69,6 @@ int load_config(const char *fname, config_t *config) {
     return 0;
 }
 
-//PID = PORCO IL DIO
-
 int create_processes(const char *exec_path, int count, pid_t *pid_array, int start_index, char *const argv[]) {
     for (int i = 0; i < count; i++) {
         pid_t pid = fork(); 
@@ -109,6 +101,17 @@ static int create_sportelli(int n, pid_t *pid_array, int start_index) {
     return 0;
 }
 
+static void create_operatori() {
+    for (int i = 0; i < config.NOF_WORKERS; ++i) {
+        int svc = rand() % NUM_SERVICES;
+
+        char svcbuf[16]; snprintf(svcbuf, sizeof svcbuf, "%d", svc);
+        char *const args_op[] = { (char*)"./operatore", svcbuf, NULL };
+
+        create_processes("./operatore", 1, proc_table.all_pids, proc_table.n_pids + i, args_op);
+    }
+}
+
 void wait_children_ready(int sem_id, int n_ready) {
     printf("[DIRETTORE]   Attendo %d processi ready …\n", n_ready);
 
@@ -124,7 +127,6 @@ static void sem_broadcast(int sem_id, int sem_num, int count) {
 }
 
 static void assign_service_sportello(int day, int n_sportelli, int spor_msg_qid, day_plan_t *plan) {
-    (void)day; // if you later store it in plan, remove this
     memset(plan->counts, 0, sizeof(plan->counts));
 
     for (int i = 0; i < n_sportelli; ++i) {
@@ -155,15 +157,16 @@ void run_simulation(int sim_duration, long n_nano_secs, int sem_id, int n_broadc
         sv_sem_set(sem_id, 0, 0);  //reset sem0
         sv_sem_set(sem_id, 1, 0);  //reset sem1
 
+        purge_queue_all(spor_msg_qid);
         assign_service_sportello(d, n_sportelli, spor_msg_qid, plan);
 
-        log_sendf(log_qid, "[DIRETTORE] ======== Inizio giorno %d ========\n", d);
+        log_sendf(log_qid, "\n[DIRETTORE] ======== Inizio giorno %d ========\n\n", d);
         sem_broadcast(sem_id, 0, n_broadcast);    //segnale di inizio giornata, sem 0
 
         nanosleep(&day, NULL);
 
         sem_broadcast(sem_id, 1, n_broadcast);    //segnale di fine giornata, sem 1
-        log_sendf(log_qid, "[DIRETTORE] ======== Fine giorno %d ==========\n", d);
+        log_sendf(log_qid, "\n[DIRETTORE] ======== Fine giorno %d ==========\n", d);
         //Salvare stats qui (credo)
     }
 
@@ -173,9 +176,6 @@ void run_simulation(int sim_duration, long n_nano_secs, int sem_id, int n_broadc
     sem_broadcast(sem_id, 0, n_broadcast);   /* sveglia chiunque sia fermo su sem0 (di sicurezza) */
 }
 
-
-//main in costruzione
-//a meno di commenti "DEBUG" lasciare così che dovrebbe andare
 int main() {
     setvbuf(stdout, NULL, _IOLBF, 0);   /* stdout line-buffered */
 
@@ -248,11 +248,10 @@ int main() {
     //Sportello
     create_sportelli(config.NOF_WORKER_SEATS, proc_table.all_pids, proc_table.n_pids);
     proc_table.n_pids += config.NOF_WORKER_SEATS;
-/*
+
     //Operatore
-    create_processes("./operatore", config.NOF_WORKERS, proc_table.all_pids, pid_array_index_offset);
-    // pid_array_index_offset chi è costui? un tipo losco
-*/
+    create_operatori();
+    proc_table.n_pids += config.NOF_WORKERS;
 
     wait_children_ready(sem_id, proc_table.n_pids);     //direttore aspetta che i figli siano tutti pronti
     run_simulation(config.SIM_DURATION, config.N_NANO_SECS, sem_id, (proc_table.n_pids - 1), log_qid, spor_msg_qid, config.NOF_WORKER_SEATS, plan);
@@ -263,7 +262,7 @@ int main() {
     }
 
     //close logger
-    log_sendf(log_qid, "[DIRETTORE] ======== Fine simulazione ========\n");
+    log_sendf(log_qid, "\n[DIRETTORE] ======== Fine simulazione ========\n");
     log_send_shutdown(log_qid);
     waitpid(proc_table.all_pids[0], NULL, 0);
 
