@@ -241,20 +241,28 @@ int purge_queue_all(int qid) {
 }
 
 //Shared memory
-int shm_plan_get_existing(void) {
-    key_t k = ftok(FTOK_PATH_PLAN, SHM_PLAN_ID);
-    if (k == -1) { perror("ftok plan"); exit(EXIT_FAILURE); }
-    int id = shmget(k, 0, 0);  // no IPC_CREAT here
-    if (id == -1) { perror("shmget plan (get)"); exit(EXIT_FAILURE); }
+int shm_get_or_create(key_t key, size_t size) {
+    int id = shmget(key, size, IPC_CREAT | 0666);
+    if (id == -1) { perror("shmget(create)"); exit(EXIT_FAILURE); }
     return id;
 }
 
-day_plan_t* shm_plan_attach_ro(int shmid) {
-    void *p = shmat(shmid, NULL, SHM_RDONLY);
-    if (p == (void *)-1) { perror("shmat plan ro"); exit(EXIT_FAILURE); }
-    return (day_plan_t*)p;
+int shm_get_existing(key_t key) {
+    int id = shmget(key, 0, 0); /* size 0 is OK when not creating */
+    if (id == -1) { perror("shmget(get)"); exit(EXIT_FAILURE); }
+    return id;
 }
 
-void shm_plan_detach(const day_plan_t *p) {
-    if (p) shmdt((const void*)p);
+void* shm_attach(int shmid, int readonly) {
+    void *p = shmat(shmid, NULL, readonly ? SHM_RDONLY : 0);
+    if (p == (void *)-1) { perror("shmat"); exit(EXIT_FAILURE); }
+    return p;
+}
+
+void shm_detach(const void *addr) {
+    if (addr && shmdt((void*)addr) == -1) perror("shmdt");
+}
+
+void shm_remove(int shmid) {
+    if (shmctl(shmid, IPC_RMID, 0) == -1) perror("shmctl(IPC_RMID)");
 }
