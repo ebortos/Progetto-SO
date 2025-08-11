@@ -27,30 +27,21 @@ static int send_ticket_request(int erog_qid, pid_t pid, int service_type, int lo
     return 0;
 }
 
-/* prova a ricevere la reply per questo pid (non bloccante) */
-static int try_receive_reply(int erog_qid, pid_t pid, int *ticket_out, int *service_out) {
+//prova a ricevere una risposta da msgq
+static int try_receive_by_pid(int qid, pid_t pid, int *ticket_out) {
     erogatore_reply_msg rep;
-    ssize_t r = msgrcv(erog_qid, &rep, sizeof(rep) - sizeof(long), pid, IPC_NOWAIT);
-
-    if (r == -1) {
-        if (errno == ENOMSG) return 0;
-        perror("msgrcv (reply utente)");
-        exit(EXIT_FAILURE);
-    }
-
+    ssize_t r = msgrcv(qid, &rep, sizeof(rep) - sizeof(long), pid, IPC_NOWAIT);
+    if (r == -1) { if (errno == ENOMSG) return 0; perror("msgrcv by_pid"); exit(EXIT_FAILURE); }
     if (ticket_out) *ticket_out = rep.ticket_number;
-    if (service_out) *service_out = rep.service_type;
-
     return 1;
 }
 
 //utente si mette in coda allo sportello
-static int enqueue_service_line(int serv_qid, pid_t pid, int ticket_number, int service_type) {
+static int enqueue_service_line(int serv_qid, pid_t pid, int service_type) {
     erogatore_request_msg s;
     s.mtype         = service_type + 1;   /* routing by service */
-    s.service_type  = service_type;
+    s.service_type = service_type;
     s.pid           = pid;
-    s.ticket_number = ticket_number;
 
     if (msgsnd(serv_qid, &s, sizeof(s) - sizeof(long), 0) == -1) {
         perror("msgsnd (utente->service line)");
@@ -71,7 +62,7 @@ static void run_utente(int sem_id, int erog_qid, int serv_qid, int done_qid, int
     const pid_t me = getpid();
     srand((unsigned)time(NULL) ^ (unsigned)me);
 
-    for (;;) {
+    while (1) {
         /* 1) start of day */
         sv_sem_wait(sem_id, 0);
 
@@ -85,18 +76,16 @@ static void run_utente(int sem_id, int erog_qid, int serv_qid, int done_qid, int
 
         /* 2) decide whether to go today */
         if (utente_rand_decision(p_min, p_max)) {
-            /* pick the service first */
             my_service = rand() % NUM_SERVICES;
 
             /* check availability for this service today */
             if (plan->counts[my_service] <= 0) {
-                log_sendf(log_qid, "[UTENTE %d] NO POSTE (nessuno sportello per servizio %d oggi)\n",
-                          (int)me, my_service);
+                log_sendf(log_qid, "[UTENTE %d] NO POSTE (nessuno sportello per servizio %d oggi)\n", (int)me, my_service);
             } else {
                 log_sendf(log_qid, "[UTENTE %d] SI POSTE (servizio %d)\n", (int)me, my_service);
 
                 /* ask erogatore for a ticket */
-                if (send_ticket_request_erogatore(erog_qid, me, my_service, log_qid) == 0)
+                if (send_ticket_request(erog_qid, me, my_service, log_qid) == 0)
                     asked_ticket = 1;
             }
         } else {
@@ -104,30 +93,27 @@ static void run_utente(int sem_id, int erog_qid, int serv_qid, int done_qid, int
         }
 
         /* 3) during the day: wait for ticket, then enqueue to sportello, then wait for completion */
-        for (;;) {
+        while (1) {
             int did_something = 0;
 
             if (asked_ticket && !got_ticket) {
                 int tno = -1, st = -1;
-                if (try_receive_ticket_from_erogatore(erog_qid, me, &tno, &st) == 1) {
+                if (try_receive_by_pid(erog_qid, me, &my_ticket) == 1) {
                     my_ticket  = tno;
-                    if (st >= 0) my_service = st;  /* trust erogatore’s echo if provided */
                     got_ticket = 1;
                     did_something = 1;
 
                     /* queue to sportello line for my service */
-                    if (enqueue_service_line(serv_qid, me, my_ticket, my_service) == 0)
+                    if (enqueue_service_line(serv_qid, me, my_service) == 0)
                         queued_sp = 1;
                 }
             }
 
             if (queued_sp && !served) {
-                int fin_tno = -1, fin_st = -1;
-                if (try_receive_completion_from_sportello(done_qid, me, &fin_tno, &fin_st) == 1) {
+                if (try_receive_by_pid(done_qid, me, NULL) == 1) {
                     served = 1;
                     did_something = 1;
-                    log_sendf(log_qid, "[UTENTE %d] Servito (ticket=%d, serv=%d)\n",
-                              (int)me, fin_tno, fin_st);
+                    log_sendf(log_qid, "[UTENTE %d] Servito", (int)me);
                 }
             }
 
@@ -163,13 +149,11 @@ int main(int argc, char *argv[]) {
     if (sem_id == -1) { perror("semget"); exit(EXIT_FAILURE); }
 
     /* attach read-only day plan */
-    int plan_shmid = shm_plan_get_existing();
-    day_plan_t *plan = shm_plan_attach_ro(plan_shmid);
+    key_t plan_key = get_queue_key(FTOK_PATH_PLAN, SHM_PLAN_ID);
+    int   plan_shmid = shm_get_existing(plan_key);
+    const day_plan_t *plan = (const day_plan_t*)shm_attach(plan_shmid, 1);
 
-    if (argc < 3) {
-        fprintf(stderr, "Usage: %s <p_min> <p_max>\n", argv[0]);
-        exit(EXIT_FAILURE);
-    }
+
     float p_min = atof(argv[1]);
     float p_max = atof(argv[2]);
     if (p_min < 0) p_min = 0;
@@ -179,8 +163,8 @@ int main(int argc, char *argv[]) {
     /* ready barrier */
     sv_sem_signal(sem_id, 3);
 
-    run_utente(sem_id, erog_qid, serv_qid, done_qid, plan, log_qid, p_min, p_max);
+    run_utente(sem_id, erog_qid, serv_qid, done_qid, log_qid, plan, p_min, p_max);
 
-    shm_plan_detach(plan);
+    shm_detach(plan);
     return 0;
 }

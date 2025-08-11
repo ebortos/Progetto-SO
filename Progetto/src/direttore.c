@@ -11,6 +11,7 @@
 #include <time.h>
 #include <signal.h>
 #include <sys/sem.h>
+#include <sys/shm.h>
 
 #define NUM_PROCESSI (2 + config.NOF_USERS /*+ config.NOF_WORKER_SEATS + config.NOF_WORKERS*/)
 
@@ -108,22 +109,6 @@ static int create_sportelli(int n, pid_t *pid_array, int start_index) {
     return 0;
 }
 
-void assign_service_sportello(int msg_id, int num_sportelli, int log_qid) {
-    for (int i = 0; i < num_sportelli; i++) {
-        sportello_msg_t msg;
-        msg.mtype = 1000 + i;       //1000 arbitrario per differenziare i msg
-        msg.sportello_info.service_type = rand() % 6;
-        msg.sportello_info.occupato = 0;
-
-        if (msgsnd(msg_id, &msg, sizeof(sportello_t), 0) == -1) {
-            perror("msgsnd direttore to sportello");
-            exit(EXIT_FAILURE);
-        }
-
-        //log_sendf(log_qid, "[Direttore] Assegnato servizio %d a sportello %d\n", msg.sportello_info.service_type, i);
-    }
-}
-
 void wait_children_ready(int sem_id, int n_ready) {
     printf("[DIRETTORE]   Attendo %d processi ready …\n", n_ready);
 
@@ -138,26 +123,22 @@ static void sem_broadcast(int sem_id, int sem_num, int count) {
         sv_sem_signal(sem_id, sem_num);
 }
 
-static void build_day_plan(int day, int n_sportelli, int spor_msg_qid, day_plan_t *plan)
-{
-    // reset plan
+static void assign_service_sportello(int day, int n_sportelli, int spor_msg_qid, day_plan_t *plan) {
+    (void)day; // if you later store it in plan, remove this
     memset(plan->counts, 0, sizeof(plan->counts));
-    //plan->day = day;      se si decide di aggiungerlo
 
     for (int i = 0; i < n_sportelli; ++i) {
-        int service = rand() % NUM_SERVICES;  // your policy can change
-
-        // bump availability
+        int service = rand() % NUM_SERVICES;
         plan->counts[service]++;
 
-        // notify sportello i of its assignment for today
         sportello_msg_t msg;
-        msg.mtype = 1000 + i;                 // each sportello listens on 1000+id
+        msg.mtype = 1000 + i;                     // sportello i listens here
         msg.sportello_info.service_type = service;
         msg.sportello_info.occupato     = 0;
         msg.sportello_info.operatore_id = -1;
 
-        if (msgsnd(spor_msg_qid, &msg, sizeof(sportello_t), 0) == -1) {
+        /* IMPORTANT: size is payload excluding long mtype */
+        if (msgsnd(spor_msg_qid, &msg, sizeof(sportello_msg_t) - sizeof(long), 0) == -1) {
             perror("msgsnd direttore->sportello");
             exit(EXIT_FAILURE);
         }
@@ -174,11 +155,10 @@ void run_simulation(int sim_duration, long n_nano_secs, int sem_id, int n_broadc
         sv_sem_set(sem_id, 0, 0);  //reset sem0
         sv_sem_set(sem_id, 1, 0);  //reset sem1
 
-        build_day_plan(d, n_sportelli, spor_msg_qid, plan);
+        assign_service_sportello(d, n_sportelli, spor_msg_qid, plan);
 
         log_sendf(log_qid, "[DIRETTORE] ======== Inizio giorno %d ========\n", d);
         sem_broadcast(sem_id, 0, n_broadcast);    //segnale di inizio giornata, sem 0
-        assign_service_sportello(spor_msg_qid, config.NOF_WORKER_SEATS, log_qid);
 
         nanosleep(&day, NULL);
 
@@ -230,16 +210,19 @@ int main() {
     key_t spor_queue_key = get_queue_key(FTOK_PATH_SPOR, MSG_QUEUE_ID_SPOR);
     int spor_msg_qid = init_msg_queue(spor_queue_key);
 
-    // service/done queues (so they exist before children)
+    // service/done queues
     int serv_qid = init_msg_queue_fresh(get_queue_key(FTOK_PATH_SERV, MSG_QUEUE_ID_SERV));
-    (void)serv_qid;
+    //(void)serv_qid;
     int done_qid = init_msg_queue(get_queue_key(FTOK_PATH_DONE, MSG_QUEUE_ID_DONE));
     (void)done_qid;
 
-    /* === day plan SHM (RW) === */
-    int plan_shmid = shm_plan_create_or_get();     // implement in utils as: ftok + shmget(IPC_CREAT|0666, sizeof(day_plan_t))
-    day_plan_t *plan = shm_plan_attach_ro(plan_shmid);
-    memset(plan, 0, sizeof(*plan));               // clear once
+    //day plan (read write)
+    key_t plan_key = ftok(FTOK_PATH_PLAN, SHM_PLAN_ID);
+    int   plan_shmid = shmget(plan_key, sizeof(day_plan_t), IPC_CREAT | 0666);
+    if (plan_shmid == -1) { perror("shmget plan"); exit(EXIT_FAILURE); }
+    day_plan_t *plan = shm_attach(plan_shmid, 0);
+    if (plan == (void *)-1) { perror("shmat plan"); exit(EXIT_FAILURE); }
+    memset(plan, 0, sizeof(*plan));              // clear once
 
 
     //======= SPAWN PROCESSES ========//
@@ -285,8 +268,7 @@ int main() {
     waitpid(proc_table.all_pids[0], NULL, 0);
 
     //cleanup
-    shm_plan_detach(plan);
-
+    shmdt(plan);
     cleanup_all_ipc();
     free(proc_table.all_pids);
 
