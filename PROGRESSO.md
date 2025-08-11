@@ -2,6 +2,7 @@
 
 ## Linee Guida
 
+- sparsi nel codice ci sono delle printf (log_send) commentate, di base non servono ma possono essere utili per testing
 - (era un prank) english preferred nel codice, italiano nelle stampe
 - (Forse, tendente al no) la cosa migliore è scrivere il direttore prima e, ogni volta che si raggiunge la execve di un altro file (o in qualsiasi altro modo) si interrompe il direttore e si continua con quel file
 - Pensavo di fare un'unico shared.h in cui spiaccicare tutte le definizioni per semplicità
@@ -15,6 +16,7 @@
 - rinominate le funzioni utils dei sem a sv_sem_.... per evitare ambiguità con le funzioni posix (in particolare per sem_wait)
 - aggiunto logger.c: tutti i processi per stampare mandano tramite un msg queue al logger il messaggio che poi li stampa in ordine
 - aggiunta shared memory tra direttore e utente per comunicare gli sportelli disponibili del giorno con i relativi servizi
+- l'utente, dopo essersi trastullato allo sportello viene rimosso dalla coda "implicitamente" con la chiamata __ssize_t r = msgrcv(serv_qid, &req, sizeof(req) - sizeof(long), (long)(my_service + 1), IPC_NOWAIT);__ eliminando di fatto la richiesta dell'utente dalla msgq
 
 ## TO-DO
 
@@ -43,4 +45,4 @@
 - Pulizia ipcs
 - Utente ora può chiedere più ticket durante la sim
 - Semafori sportello
-- Utente si mette in coda allo sportello
+- Utente si mette in coda allo sportello e viene poi tolto
