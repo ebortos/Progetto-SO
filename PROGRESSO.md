@@ -20,7 +20,6 @@
 
 ## TO-DO
 
-- rimuovere print di debug (dbg) in giro
 - aggiungere pause operatore
 - Aggiungere statistiche con shm
 - aggiungere controllo explode threshold
@@ -30,6 +29,7 @@
 
 ## Cose da fixare/controllare
 
+- __important__ sim si blocca al primo giorno, check sem1 processi
 - logger non stampa shutdown finale
 - capire come memorizzare questi dati _"le statistiche precedenti suddivise per tipologia di servizio"_ __(si può lasciare anche per dopo)__
 - capire se il controllo sem4 ha senso durante la giornata (after wake), __(si può lasciare anche per dopo)__
@@ -49,4 +49,4 @@
 - Semafori sportello
 - Utente si mette in coda allo sportello e viene poi tolto
 - Utente viene servito allo sportello
-- Utente viene interrotto alla fine della giornata e della sim se in mezzo a un servizio
+- (quasi) Utente viene interrotto alla fine della giornata e della sim se in mezzo a un servizio
