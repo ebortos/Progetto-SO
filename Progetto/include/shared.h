@@ -107,9 +107,10 @@ int purge_queue_all(int qid);
 int open_service_queue(void);
 int open_done_queue(void);
 
-int shm_plan_get_existing(void);      // shmget without creating (users)
-int shm_plan_create_or_get(void);     // director (create or get)
-day_plan_t* shm_plan_attach_ro(int shmid);
-void shm_plan_detach(const day_plan_t *p);
+int shm_get_or_create(key_t key, size_t size);
+int shm_get_existing(key_t key);
+void* shm_attach(int shmid, int readonly);
+void shm_detach(const void *addr);
+void shm_remove(int shmid);
 
 #endif
