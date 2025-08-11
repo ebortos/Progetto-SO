@@ -32,7 +32,7 @@ void issue_ticket(int sem_id, int msg_id, int log_qid) {
                     perror("msgrcv erog"); exit(EXIT_FAILURE);
                 }
 
-                log_sendf(log_qid, "[EROGATORE] Ticket %d per servizio %d (PID %d)\n", ticket_counter, req.service_type, req.pid);
+                //log_sendf(log_qid, "[EROGATORE] Ticket %d per servizio %d (PID %d)\n", ticket_counter, req.service_type, req.pid);
 
                 erogatore_reply_msg rep = {0};
                 rep.mtype         = req.pid;

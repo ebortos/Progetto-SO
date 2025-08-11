@@ -20,7 +20,7 @@ static int send_ticket_request(int erog_qid, pid_t pid, int service_type, int lo
         return -1;
     }
 
-    log_sendf(log_qid, "[UTENTE %d] Richiesta inviata per servizio %d\n", (int)pid, service_type);
+    //log_sendf(log_qid, "[UTENTE %d] Richiesta inviata per servizio %d\n", (int)pid, service_type);
     return 0;
 }
 
@@ -30,12 +30,7 @@ static int try_receive_by_pid(int qid, pid_t pid, int *ticket_out, int *service_
     ssize_t r = msgrcv(qid, &rep, MSGSZ(erogatore_reply_msg), pid, IPC_NOWAIT);
 
     if (r == -1) { 
-        if (errno == ENOMSG) return 0; perror("msgrcv by_pid"); exit(EXIT_FAILURE); 
-        if (errno == E2BIG) {
-            // This means someone sent a larger payload than we expected on this queue.
-            fprintf(stderr, "[FATAL] E2BIG on qid=%d (pid=%d). Check struct/size mismatch for this queue.\n",
-                    qid, (int)pid);
-        }    
+        if (errno == ENOMSG) return 0; perror("msgrcv by_pid"); exit(EXIT_FAILURE);
     }
     
 
@@ -111,39 +106,42 @@ static void run_utente(int sem_id, int erog_qid, int serv_qid, int done_qid, int
                 if (try_receive_by_pid(erog_qid, me, &tno, &st) == 1) {
                     my_ticket  = tno;
                     if (st >= 0) my_service = st;
-
-                    log_sendf(log_qid, "[DBG] got ticket=%d svc=%d pid=%d\n", my_ticket, my_service, (int)me);
-
-                    /* queue to sportello line for my service */
+                
                     if (enqueue_service_line(serv_qid, me, my_ticket, my_service) == 0) {
-                        log_sendf(log_qid, "[DBG] enqueue ticket=%d svc=%d pid=%d\n", my_ticket, my_service, (int)me);
                         got_ticket = 1;
-                        queued_sp = 1;
+                        queued_sp  = 1;
+                        did_something = 1;
                     }
                 }
             }
-
+        
             if (queued_sp && !served) {
                 int fin_ticket = -1, fin_serv = -1;
-
                 if (try_receive_by_pid(done_qid, me, &fin_ticket, &fin_serv) == 1) {
                     served = 1;
+                    did_something = 1;
                     log_sendf(log_qid, "[UTENTE %d] Servito\n", (int)me);
                 }
             }
-
+        
             /* end-of-simulation? */
             int t = sv_sem_trywait(sem_id, 2);
             if (t == 1) return;
             if (t == -1) { perror("sv_sem_trywait sem2 (utente)"); exit(EXIT_FAILURE); }
-
-            /* end-of-day? -> if not served, discard and try again tomorrow */
+        
+            /* end-of-day? */
             int e = sv_sem_trywait(sem_id, 1);
-            if (e == 1) break;
+            if (e == 1) {
+                if (queued_sp && !served) {
+                    log_sendf(log_qid, "[UTENTE %d] Interrotto (ticket=%d, serv=%d)\n", (int)me, my_ticket, my_service);
+                }
+                break;  // next day
+            }
             if (e == -1) { perror("sv_sem_trywait sem1 (utente)"); exit(EXIT_FAILURE); }
-
+        
             if (!did_something) sched_yield();
         }
+
         /* loop: next day */
     }
 }

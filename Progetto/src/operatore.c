@@ -83,7 +83,7 @@ static void run_operatore(int sem_id, int serv_qid, int done_qid, int log_qid, i
                         exit(EXIT_FAILURE);
                     }
 
-                    log_sendf(log_qid, "[OPERATORE %d] Completato ticket=%d serv=%d per PID %d\n", (int)me, req.ticket_number, req.service_type, (int)req.pid);
+                    //log_sendf(log_qid, "[OPERATORE %d] Completato ticket=%d serv=%d per PID %d\n", (int)me, req.ticket_number, req.service_type, (int)req.pid);
                 } else {
                     /* interrupted: do NOT send completion */
                     log_sendf(log_qid, "[OPERATORE %d] Interrotto (serv=%d, pid=%d)\n", (int)me, req.service_type, (int)req.pid);

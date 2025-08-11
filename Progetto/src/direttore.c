@@ -173,6 +173,12 @@ void run_simulation(int sim_duration, const long NANOS_SIM_MIN, int sem_id, int 
 
         nanosleep(&day, NULL);
 
+        // ensure all participants are actually waiting on sem1
+        while (semctl(sem_id, 1, GETNCNT) != ((int)proc_table.n_pids - 1)) {
+            struct timespec ts = {0, 1000000}; // 1 ms
+            nanosleep(&ts, NULL);
+        }
+
         sem_broadcast(sem_id, 1, n_broadcast);    //segnale di fine giornata, sem 1
         log_sendf(log_qid, "\n[DIRETTORE] ======== Fine giorno %d ==========\n", d);
         //Salvare stats qui (credo)
