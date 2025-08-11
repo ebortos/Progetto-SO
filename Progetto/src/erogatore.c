@@ -2,9 +2,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/msg.h>
-#include <sys/sem.h>
-#include <unistd.h>
 #include <stdbool.h>
 #include <errno.h>
 #include <sched.h>

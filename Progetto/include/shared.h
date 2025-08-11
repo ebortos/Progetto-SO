@@ -2,6 +2,10 @@
 #define SHARED_H
 
 #include <sys/ipc.h>
+#include <sys/sem.h>
+#include <sys/shm.h>
+#include <sys/wait.h>
+#include <sys/msg.h>
 #include <unistd.h>
 
 #define FTOK_PATH_LOG "../tmp/ipc_msg_log_key"

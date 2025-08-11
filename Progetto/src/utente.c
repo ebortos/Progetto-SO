@@ -2,11 +2,8 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/msg.h>
-#include <unistd.h>
 #include <time.h>
 #include <errno.h>
-#include <sys/sem.h>
 #include <sched.h>
 #include <string.h>
 

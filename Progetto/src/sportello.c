@@ -3,8 +3,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <sys/msg.h>
-#include <sys/sem.h>
 #include <unistd.h>
 #include <errno.h>
 #include <sched.h>
@@ -44,9 +42,8 @@ void run_sportello(int spor_id, int sem_id, int log_qid, int spor_qid) {
             if (!assigned) {
                 if (try_receive_assignment(spor_qid, spor_id, &my) == 1) {
                     assigned = 1;
-                    if (log_qid >= 0) {
-                        log_sendf(log_qid, "[SPORTELLO %d] assegnato servizio %d (op=%d)\n", spor_id, my.service_type, my.operatore_id);
-                    }
+                    
+                    //if (log_qid >= 0) log_sendf(log_qid, "[SPORTELLO %d] assegnato servizio %d (op=%d)\n", spor_id, my.service_type, my.operatore_id);
                 did = 1;
                 }
             }
