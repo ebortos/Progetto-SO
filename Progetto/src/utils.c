@@ -260,9 +260,9 @@ void* shm_attach(int shmid, int readonly) {
 }
 
 void shm_detach(const void *addr) {
-    if (addr && shmdt((void*)addr) == -1) perror("shmdt");
+    if (shmdt((void*)addr) == -1) perror("shmdt");
 }
 
 void shm_remove(int shmid) {
-    if (shmctl(shmid, IPC_RMID, 0) == -1) perror("shmctl(IPC_RMID)");
+    if (shmctl(shmid, IPC_RMID, NULL) == -1) perror("shmctl(IPC_RMID)");
 }
