@@ -32,6 +32,9 @@
 #define FTOK_PATH_PLAN "../tmp/ftok_plan"
 #define SHM_PLAN_ID    'P'
 
+#define FTOK_PATH_SEATS  "/tmp/poste_seats"
+#define SEM_SEATS_ID     0x51    //small int
+
 #define MSGSZ(T) ((int)(sizeof(T) - sizeof(long)))
 
 //tipologie servizi (da verificare se è utlizzato da più file, altrimenti recluderlo nell'unico bastardo che lo usa)

@@ -27,7 +27,7 @@ typedef struct {
 } process_table_t;
 
 extern char **environ;     //per execve
-process_table_t proc_table; //forse si può spostare
+process_table_t proc_table;
 config_t config;
 
 //legge il config e salva nella struct config_t
@@ -105,25 +105,27 @@ static void create_operatori() {
     char nsbuf[32];
     snprintf(nsbuf, sizeof nsbuf, "%d", config.N_NANO_SECS);
 
+    char pausesbuf[16];
+    snprintf(pausesbuf, sizeof pausesbuf, "%d", config.NOF_PAUSE);
+
     for (int i = 0; i < config.NOF_WORKERS; ++i) {
         int svc = rand() % NUM_SERVICES;
 
         char svcbuf[16];
         snprintf(svcbuf, sizeof svcbuf, "%d", svc);
 
-        char *const args_op[] = { (char *)"./operatore", svcbuf, nsbuf, NULL };
-
+        char *const args_op[] = { (char *)"./operatore", svcbuf, nsbuf, pausesbuf, NULL };
         create_processes("./operatore", 1, proc_table.all_pids, proc_table.n_pids + i, args_op);
     }
 }
 
 void wait_children_ready(int sem_id, int n_ready) {
-    printf("[DIRETTORE]   Attendo %d processi ready …\n", n_ready);
+    //printf("[DIRETTORE]   Attendo %d processi ready …\n", n_ready);
 
     for (int i = 0; i < n_ready; ++i)         /* blocca finché ognuno non fa +1 */
         sv_sem_wait(sem_id, 3);
 
-    printf("[DIRETTORE]   Tutti i figli sono ready\n");
+    //printf("[DIRETTORE]   Tutti i figli sono ready\n");
 }
 
 static void sem_broadcast(int sem_id, int sem_num, int count) {
@@ -161,12 +163,20 @@ void run_simulation(int sim_duration, const long NANOS_SIM_MIN, int sem_id, int 
         .tv_nsec = (NANOS_SIM_MIN * (long)DAY_SIM_MINUTES) % 1000000000L
     };
 
+    key_t seats_key = ftok(FTOK_PATH_SEATS, SEM_SEATS_ID);
+    int seats_sid = semget(seats_key, NUM_SERVICES, 0);
+    if (seats_sid == -1) { perror("semget seats"); exit(EXIT_FAILURE); }
+
     for (int d = 1; d <= sim_duration; d++) {
         sv_sem_set(sem_id, 0, 0);  //reset sem0
         sv_sem_set(sem_id, 1, 0);  //reset sem1
+        sv_sem_set(sem_id, 3, 0);  //reset sem3
 
         purge_queue_all(spor_msg_qid);
         assign_service_sportello(d, n_sportelli, spor_msg_qid, plan);
+
+        for (int s = 0; s < NUM_SERVICES; ++s)  //pubblicazione posti sportello
+            sv_sem_set(seats_sid, (unsigned short)s, plan->counts[s]);
 
         log_sendf(log_qid, "\n[DIRETTORE] ======== Inizio giorno %d ========\n\n", d);
         sem_broadcast(sem_id, 0, n_broadcast);    //segnale di inizio giornata, sem 0
@@ -174,6 +184,7 @@ void run_simulation(int sim_duration, const long NANOS_SIM_MIN, int sem_id, int 
         nanosleep(&day, NULL);
 
         sem_broadcast(sem_id, 1, n_broadcast);    //segnale di fine giornata, sem 1
+        wait_children_ready(sem_id, n_broadcast);
         log_sendf(log_qid, "\n[DIRETTORE] ======== Fine giorno %d ==========\n", d);
         //Salvare stats qui (credo)
     }
@@ -194,6 +205,9 @@ int main() {
         return -1;
     }
 
+
+    // ======= SPAWN IPCS AND VARS ======= //
+
     //Init array pid processi
     proc_table.n_pids = 0;
     proc_table.all_pids = malloc(sizeof(pid_t) * NUM_PROCESSI);
@@ -206,6 +220,10 @@ int main() {
     //Init semaphores
     key_t sem_key = ftok(FTOK_PATH_SEM, SEM_KEY_ID);
     int sem_id = create_semaphore_set(sem_key, 4);
+
+    //Init sem seats
+    key_t seats_key = ftok(FTOK_PATH_SEATS, SEM_SEATS_ID);
+    int seats_sid = create_semaphore_set(seats_key, NUM_SERVICES);
     
     //Init msg queue logger
     int log_qid = open_log_queue();
@@ -260,6 +278,9 @@ int main() {
     //Operatore
     create_operatori();
     proc_table.n_pids += config.NOF_WORKERS;
+
+
+    // ======= SIMULATION ======= //
 
     wait_children_ready(sem_id, proc_table.n_pids);     //direttore aspetta che i figli siano tutti pronti
     run_simulation(config.SIM_DURATION, config.N_NANO_SECS, sem_id, (proc_table.n_pids - 1), log_qid, spor_msg_qid, config.NOF_WORKER_SEATS, plan);
