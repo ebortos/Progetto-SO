@@ -23,7 +23,6 @@
 
 ## TO-DO
 
-- aggiungere pause operatore
 - Aggiungere statistiche con shm
 - aggiungere controllo explode threshold
 - capire che stracazzo significa il paragrafo 5.6 della consegna, in particolare la parte sui conf (forse guardare la lezione di presentazione del progetto di schifanella può essere d'aiuto, ora non ho voglia), in caso cambiare (easy) lettura dei file in direttore __(si può lasciare anche per dopo)__
