@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <errno.h>
+#include <fcntl.h>
 
 #define NUM_PROCESSI (2 + config.NOF_USERS + config.NOF_WORKER_SEATS + config.NOF_WORKERS)
 
@@ -155,7 +157,37 @@ static void assign_service_sportello(int day, int n_sportelli, int spor_msg_qid,
     }
 }
 
-void run_simulation(int sim_duration, const long NANOS_SIM_MIN, int sem_id, int n_broadcast, int log_qid, int spor_msg_qid, int n_sportelli, day_plan_t *plan) {
+static int check_explode(int sem_id, int n_broadcast, int stats_qid, int explode_threshold, int log_qid) {
+    int interrupted_today = 0;
+    int per_service[NUM_SERVICES] = {0};
+
+    erogatore_request_msg sm;
+    while (1) {
+        ssize_t r = msgrcv(stats_qid, &sm, MSGSZ(erogatore_request_msg), 0, IPC_NOWAIT | MSG_NOERROR);
+        if (r == -1) {
+            if (errno == ENOMSG) break;
+            perror("msgrcv (stats)"); exit(EXIT_FAILURE);
+        }
+        interrupted_today++;
+        if (sm.service_type >= 0 && sm.service_type < NUM_SERVICES)
+            per_service[sm.service_type]++;
+    }
+
+    log_sendf(log_qid, "[DIRETTORE] Interrotti oggi: %d (soglia=%d)\n", interrupted_today, explode_threshold);
+    for (int s = 0; s < NUM_SERVICES; ++s)
+        if (per_service[s] > 0)
+            log_sendf(log_qid, "  - servizio %d: %d\n", s, per_service[s]);
+
+    if (interrupted_today > explode_threshold) {
+        log_sendf(log_qid, "[DIRETTORE] *** EXPLODE TRESHOLD: TERMINO LA SIMULAZIONE ***\n");
+        sv_sem_set(sem_id, 2, 0);
+        sem_broadcast(sem_id, 2, n_broadcast);
+        return 1;
+    }
+    return 0;
+}
+
+void run_simulation(int sim_duration, const long NANOS_SIM_MIN, int sem_id, int n_broadcast, int log_qid, int spor_msg_qid, int n_sportelli, day_plan_t *plan, int explode_qid) {
     const int DAY_SIM_MINUTES = 8 * 60;  // 8h
 
     struct timespec day = {
@@ -185,6 +217,9 @@ void run_simulation(int sim_duration, const long NANOS_SIM_MIN, int sem_id, int 
 
         sem_broadcast(sem_id, 1, n_broadcast);    //segnale di fine giornata, sem 1
         wait_children_ready(sem_id, n_broadcast);
+
+        if (check_explode(sem_id, n_broadcast, explode_qid, config.EXPLODE_THRESHOLD, log_qid)) break;
+
         log_sendf(log_qid, "\n[DIRETTORE] ======== Fine giorno %d ==========\n", d);
         //Salvare stats qui (credo)
     }
@@ -242,6 +277,10 @@ int main() {
     int done_qid = init_msg_queue(get_queue_key(FTOK_PATH_DONE, MSG_QUEUE_ID_DONE));
     (void)done_qid;
 
+    //Init explode queue fresh
+    int explode_qid = init_msg_queue_fresh(get_queue_key(FTOK_PATH_EXPLODDE, MSG_QUEUE_ID_EXPLODE));
+
+
     //day plan (read write)
     key_t plan_key = ftok(FTOK_PATH_PLAN, SHM_PLAN_ID);
     int   plan_shmid = shmget(plan_key, sizeof(day_plan_t), IPC_CREAT | 0666);
@@ -283,7 +322,7 @@ int main() {
     // ======= SIMULATION ======= //
 
     wait_children_ready(sem_id, proc_table.n_pids);     //direttore aspetta che i figli siano tutti pronti
-    run_simulation(config.SIM_DURATION, config.N_NANO_SECS, sem_id, (proc_table.n_pids - 1), log_qid, spor_msg_qid, config.NOF_WORKER_SEATS, plan);
+    run_simulation(config.SIM_DURATION, config.N_NANO_SECS, sem_id, (proc_table.n_pids - 1), log_qid, spor_msg_qid, config.NOF_WORKER_SEATS, plan, explode_qid);
 
     //wait children (except logger -> i = 1)
     for (size_t i = 1; i < proc_table.n_pids; ++i) {

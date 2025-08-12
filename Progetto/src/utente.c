@@ -63,7 +63,7 @@ static int utente_rand_decision(float p_min, float p_max) {
     return (roll < p) ? 1 : 0;   // 1 = va alle poste, 0 = resta a casa
 }
 
-static void run_utente(int sem_id, int erog_qid, int serv_qid, int done_qid, int log_qid, const day_plan_t *plan, float p_min, float p_max) {
+static void run_utente(int sem_id, int erog_qid, int serv_qid, int done_qid, int log_qid, const day_plan_t *plan, float p_min, float p_max, int explode_qid) {
     const pid_t me = getpid();
     srand((unsigned)time(NULL) ^ (unsigned)me);
 
@@ -114,7 +114,7 @@ static void run_utente(int sem_id, int erog_qid, int serv_qid, int done_qid, int
                     }
                 }
             }
-        
+
             if (queued_sp && !served) {
                 int fin_ticket = -1, fin_serv = -1;
                 if (try_receive_by_pid(done_qid, me, &fin_ticket, &fin_serv) == 1) {
@@ -134,6 +134,16 @@ static void run_utente(int sem_id, int erog_qid, int serv_qid, int done_qid, int
             if (e == 1) {
                 if (queued_sp && !served) {
                     log_sendf(log_qid, "[UTENTE %d] Interrotto (ticket=%d, serv=%d)\n", (int)me, my_ticket, my_service);
+                    
+                    erogatore_request_msg sm = {0};
+                    sm.mtype         = 1;
+                    sm.pid           = me;
+                    sm.service_type  = my_service;
+                    sm.ticket_number = my_ticket;
+                    if (msgsnd(explode_qid, &sm, MSGSZ(erogatore_request_msg), 0) == -1) {
+                        perror("msgsnd (utente->stats)");
+                    }
+
                 }
                 sv_sem_signal(sem_id, 3); //end of day arrival
                 break;  // next day
@@ -156,6 +166,7 @@ int main(int argc, char *argv[]) {
     int erog_qid = init_msg_queue(get_queue_key(FTOK_PATH_EROG, MSG_QUEUE_ID_EROG));
     int serv_qid = open_service_queue();
     int done_qid = open_done_queue();
+    int explode_qid = init_msg_queue(get_queue_key(FTOK_PATH_EXPLODDE, MSG_QUEUE_ID_EXPLODE));
 
     /* semaphores (0 start,1 stop,2 end sim,3 ready) */
     key_t sem_key = ftok(FTOK_PATH_SEM, SEM_KEY_ID);
@@ -177,7 +188,7 @@ int main(int argc, char *argv[]) {
     /* ready barrier */
     sv_sem_signal(sem_id, 3);
 
-    run_utente(sem_id, erog_qid, serv_qid, done_qid, log_qid, plan, p_min, p_max);
+    run_utente(sem_id, erog_qid, serv_qid, done_qid, log_qid, plan, p_min, p_max, explode_qid);
 
     shm_detach(plan);
     return 0;

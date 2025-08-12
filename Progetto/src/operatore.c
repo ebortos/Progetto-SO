@@ -68,10 +68,10 @@ static inline int should_pause_today(int pauses_left) {
     if (pauses_left <= 0) return 0;
 
     int roll = rand() % 100;
-    // DEBUG:
-    fprintf(stderr, "[PAUSE?]pauses_left=%d roll=%d\n", pauses_left, roll);
 
-    return roll < 20; // 20% default
+    //fprintf(stderr, "[PAUSE?]pauses_left=%d roll=%d\n", pauses_left, roll);
+
+    return roll < 20; //20%
 }
 
 // Returns:
