@@ -35,6 +35,24 @@
 - capire come memorizzare questi dati _"le statistiche precedenti suddivise per tipologia di servizio"_ __(si può lasciare anche per dopo)__
 - capire se il controllo sem4 ha senso durante la giornata (after wake), __(si può lasciare anche per dopo)__
 
+## Statistiche
+
+- il numero di utenti serviti totali nella simulazione
+- il numero di utenti serviti in media al giorno
+- il numero di servizi erogati totali nella simulazione
+- il numero di servizi non erogati totali nella simulazione
+- il numero di servizi erogati in media al giorno
+- il numero di servizi non erogati in media al giorno
+- il tempo medio di attesa degli utenti nella simulazione
+- il tempo medio di attesa degli utenti nella giornata
+- il tempo medio di erogazione dei servizi nella simulazione
+- il tempo medio di erogazione dei servizi nella giornata
+- le statistiche precedenti suddivise per tipologia di servizio
+- il numero di operatori attivi durante la giornata;
+- il numero di operatori attivi durante la simulazione;
+- il numero medio di pause effettuate nella giornata e il totale di pause effettuate durante la simulazione;
+- il rapporto fra operatori disponibili e sportelli esistenti, per ogni sportello per ogni giornata.
+
 ## Cose fatte E testate
 
 - Lettura config
