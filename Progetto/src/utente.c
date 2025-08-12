@@ -135,6 +135,7 @@ static void run_utente(int sem_id, int erog_qid, int serv_qid, int done_qid, int
                 if (queued_sp && !served) {
                     log_sendf(log_qid, "[UTENTE %d] Interrotto (ticket=%d, serv=%d)\n", (int)me, my_ticket, my_service);
                 }
+                sv_sem_signal(sem_id, 3); //end of day arrival
                 break;  // next day
             }
             if (e == -1) { perror("sv_sem_trywait sem1 (utente)"); exit(EXIT_FAILURE); }

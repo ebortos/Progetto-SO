@@ -51,7 +51,12 @@ void issue_ticket(int sem_id, int msg_id, int log_qid) {
             if (t == -1) { perror("sv_sem_trywait sem2"); exit(EXIT_FAILURE); }
 
             int e = sv_sem_trywait(sem_id, 1);
-            if (e == 1) break;                       /* day ended -> next day */
+            
+            if (e == 1) { 
+                sv_sem_signal(sem_id, 3); //end of day arrival
+                break; 
+            }
+                                   /* day ended -> next day */
             if (e == -1) { perror("sv_sem_trywait sem1"); exit(EXIT_FAILURE); }
 
             /* Nothing to do? tiny backoff to avoid busy loop */
@@ -71,7 +76,7 @@ int main(int argc, char *argv[]) {
     int msg_id = init_msg_queue(mq_key);
 
     key_t sem_key = ftok(FTOK_PATH_SEM, SEM_KEY_ID);
-    int sem_id = semget(sem_key, 3, 0);
+    int sem_id = semget(sem_key, 4, 0);
     if (sem_id == -1) {
         perror("semget");
         exit(EXIT_FAILURE);

@@ -55,7 +55,12 @@ void run_sportello(int spor_id, int sem_id, int log_qid, int spor_qid) {
 
             /* end-of-day? */
             int e = sv_sem_trywait(sem_id, 1);
-            if (e == 1) break;
+
+            if (e == 1) {
+                sv_sem_signal(sem_id, 3); //end of day arrival
+                break;
+            }
+            
             if (e == -1) { perror("sv_sem_trywait sem1 (sportello)"); exit(EXIT_FAILURE); }
 
             if (!did) sched_yield();
