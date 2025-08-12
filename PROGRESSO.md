@@ -1,10 +1,11 @@
 # TO-DO, Dubbi, Chiarimenti
 
+## FUNZIONA DIOMERDA
+
 ## Linee Guida
 
 - sparsi nel codice ci sono delle printf (log_send) commentate, di base non servono ma possono essere utili per testing
 - (era un prank) english preferred nel codice, italiano nelle stampe
-- (Forse, tendente al no) la cosa migliore è scrivere il direttore prima e, ogni volta che si raggiunge la execve di un altro file (o in qualsiasi altro modo) si interrompe il direttore e si continua con quel file
 - Pensavo di fare un'unico shared.h in cui spiaccicare tutte le definizioni per semplicità
 - Tutte le strutture e definizioni (funzioni varie, struct, enum, typedef...) si scrivono nel .h se vengono utilizzate da più file, altrimenti finiscono nel .c rispettivo (quindi se una funzione non viene utilizzata da più file _non_ si mette il suo prototipo nel .h)
 - Semafori system V per regolare i processi
@@ -17,6 +18,8 @@
 - aggiunto logger.c: tutti i processi per stampare mandano tramite un msg queue al logger il messaggio che poi li stampa in ordine
 - aggiunta shared memory tra direttore e utente per comunicare gli sportelli disponibili del giorno con i relativi servizi
 - l'utente, dopo essersi trastullato allo sportello viene rimosso dalla coda "implicitamente" con la chiamata __ssize_t r = msgrcv(serv_qid, &req, sizeof(req) - sizeof(long), (long)(my_service + 1), IPC_NOWAIT);__ eliminando di fatto la richiesta dell'utente dalla msgq
+- ora il direttore aspetta un segnale ready (sem3) alla fine di ogni giorno per assicurarsi che tutti i figli abbiano finito e siano pronti per il giorno successivo
+- operatore ha il 20% di possibilità di andare in pausa per 10 min
 
 ## TO-DO
 
@@ -29,8 +32,7 @@
 
 ## Cose da fixare/controllare
 
-- __important__ sim si blocca al primo giorno, check sem1 processi
-- logger non stampa shutdown finale
+- logger non stampa shutdown finale (da controllare se sia effettivamente un problema)
 - capire come memorizzare questi dati _"le statistiche precedenti suddivise per tipologia di servizio"_ __(si può lasciare anche per dopo)__
 - capire se il controllo sem4 ha senso durante la giornata (after wake), __(si può lasciare anche per dopo)__
 
@@ -49,4 +51,5 @@
 - Semafori sportello
 - Utente si mette in coda allo sportello e viene poi tolto
 - Utente viene servito allo sportello
-- (quasi) Utente viene interrotto alla fine della giornata e della sim se in mezzo a un servizio
+- Utente viene interrotto alla fine della giornata e della sim se in mezzo a un servizio
+- Operatore va in pausa lasciando lo sportello libero per altri
