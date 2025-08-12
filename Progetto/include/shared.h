@@ -23,17 +23,20 @@
 #define FTOK_PATH_SEM "../tmp/ipc_sem_key"
 #define SEM_KEY_ID 'C'
 
-#define FTOK_PATH_SERV   "../tmp/ftok_service"   /* queue: utente -> sportello */
-#define FTOK_PATH_DONE   "../tmp/ftok_done"      /* queue: sportello -> utente */
-#define MSG_QUEUE_ID_SERV  'S'
-#define MSG_QUEUE_ID_DONE  'D'
+#define FTOK_PATH_SERV "../tmp/ftok_service"   /* queue: utente -> sportello */
+#define FTOK_PATH_DONE "../tmp/ftok_done"      /* queue: sportello -> utente */
+#define MSG_QUEUE_ID_SERV 'S'
+#define MSG_QUEUE_ID_DONE 'D'
 
 #define NUM_SERVICES 6
 #define FTOK_PATH_PLAN "../tmp/ftok_plan"
-#define SHM_PLAN_ID    'P'
+#define SHM_PLAN_ID 'P'
 
-#define FTOK_PATH_SEATS  "/tmp/poste_seats"
-#define SEM_SEATS_ID     0x51    //small int
+#define FTOK_PATH_SEATS "../tmp/poste_seats"
+#define SEM_SEATS_ID 'T'
+
+#define FTOK_PATH_EXPLODDE  "../tmp/ftok_explode"
+#define MSG_QUEUE_ID_EXPLODE  'E'
 
 #define MSGSZ(T) ((int)(sizeof(T) - sizeof(long)))
 
