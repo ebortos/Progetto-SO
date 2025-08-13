@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include "../include/shared.h"
 
 #include <stdio.h>
@@ -6,6 +8,13 @@
 #include <errno.h>
 #include <sched.h>
 #include <string.h>
+
+static inline long long now_ns(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+
+    return (long long)ts.tv_sec * 1000000000LL + ts.tv_nsec;
+}
 
 /* invia richiesta ticket */
 static int send_ticket_request(int erog_qid, pid_t pid, int service_type, int log_qid) {
@@ -43,10 +52,11 @@ static int try_receive_by_pid(int qid, pid_t pid, int *ticket_out, int *service_
 //utente si mette in coda allo sportello
 static int enqueue_service_line(int serv_qid, pid_t pid, int ticket_number, int service_type) {
     erogatore_request_msg s = {0};
-    s.mtype         = (long)service_type + 1;  // route by service
+    s.mtype         = (long)service_type + 1;
     s.service_type  = service_type;
     s.pid           = pid;
     s.ticket_number = ticket_number;
+    s.t_enqueue_ns  = now_ns();
 
     if (msgsnd(serv_qid, &s, MSGSZ(erogatore_request_msg), 0) == -1) {
         perror("msgsnd (utente->service line)");
@@ -63,7 +73,7 @@ static int utente_rand_decision(float p_min, float p_max) {
     return (roll < p) ? 1 : 0;   // 1 = va alle poste, 0 = resta a casa
 }
 
-static void run_utente(int sem_id, int erog_qid, int serv_qid, int done_qid, int log_qid, const day_plan_t *plan, float p_min, float p_max, int explode_qid) {
+static void run_utente(int sem_id, int erog_qid, int serv_qid, int done_qid, int log_qid, const day_plan_t *plan, float p_min, float p_max, int stats_qid) {
     const pid_t me = getpid();
     srand((unsigned)time(NULL) ^ (unsigned)me);
 
@@ -85,16 +95,16 @@ static void run_utente(int sem_id, int erog_qid, int serv_qid, int done_qid, int
 
             /* check availability for this service today */
             if (plan->counts[my_service] <= 0) {
-                log_sendf(log_qid, "[UTENTE %d] NO POSTE (nessuno sportello per servizio %d oggi)\n", (int)me, my_service);
+                //log_sendf(log_qid, "[UTENTE %d] NO POSTE (nessuno sportello per servizio %d oggi)\n", (int)me, my_service);
             } else {
-                log_sendf(log_qid, "[UTENTE %d] SI POSTE (servizio %d)\n", (int)me, my_service);
+                //log_sendf(log_qid, "[UTENTE %d] SI POSTE (servizio %d)\n", (int)me, my_service);
 
                 /* ask erogatore for a ticket */
                 if (send_ticket_request(erog_qid, me, my_service, log_qid) == 0)
                     asked_ticket = 1;
             }
         } else {
-            log_sendf(log_qid, "[UTENTE %d] NO POSTE\n", (int)me);
+            //log_sendf(log_qid, "[UTENTE %d] NO POSTE\n", (int)me);
         }
 
         /* 3) during the day: wait for ticket, then enqueue to sportello, then wait for completion */
@@ -120,7 +130,7 @@ static void run_utente(int sem_id, int erog_qid, int serv_qid, int done_qid, int
                 if (try_receive_by_pid(done_qid, me, &fin_ticket, &fin_serv) == 1) {
                     served = 1;
                     did_something = 1;
-                    log_sendf(log_qid, "[UTENTE %d] Servito\n", (int)me);
+                    //log_sendf(log_qid, "[UTENTE %d] Servito\n", (int)me);
                 }
             }
         
@@ -133,15 +143,16 @@ static void run_utente(int sem_id, int erog_qid, int serv_qid, int done_qid, int
             int e = sv_sem_trywait(sem_id, 1);
             if (e == 1) {
                 if (queued_sp && !served) {
-                    log_sendf(log_qid, "[UTENTE %d] Interrotto (ticket=%d, serv=%d)\n", (int)me, my_ticket, my_service);
+                    //log_sendf(log_qid, "[UTENTE %d] Interrotto (ticket=%d, serv=%d)\n", (int)me, my_ticket, my_service);
                     
-                    erogatore_request_msg sm = {0};
-                    sm.mtype         = 1;
-                    sm.pid           = me;
-                    sm.service_type  = my_service;
-                    sm.ticket_number = my_ticket;
-                    if (msgsnd(explode_qid, &sm, MSGSZ(erogatore_request_msg), 0) == -1) {
-                        perror("msgsnd (utente->stats)");
+                    stats_event_msg ev = {0};
+                    ev.mtype = 1;
+                    ev.evt   = STAT_EVT_INTERRUPTED;
+                    ev.pid   = me;
+                    ev.service_type  = my_service;
+                    ev.ticket_number = my_ticket;
+                    if (msgsnd(stats_qid, &ev, MSGSZ(stats_event_msg), 0) == -1) {
+                        perror("msgsnd (utente->stats INTERRUPTED)");
                     }
 
                 }
@@ -166,7 +177,7 @@ int main(int argc, char *argv[]) {
     int erog_qid = init_msg_queue(get_queue_key(FTOK_PATH_EROG, MSG_QUEUE_ID_EROG));
     int serv_qid = open_service_queue();
     int done_qid = open_done_queue();
-    int explode_qid = init_msg_queue(get_queue_key(FTOK_PATH_EXPLODDE, MSG_QUEUE_ID_EXPLODE));
+    int stats_qid = init_msg_queue(get_queue_key(FTOK_PATH_STATS, MSG_QUEUE_ID_STATS));
 
     /* semaphores (0 start,1 stop,2 end sim,3 ready) */
     key_t sem_key = ftok(FTOK_PATH_SEM, SEM_KEY_ID);
@@ -188,7 +199,7 @@ int main(int argc, char *argv[]) {
     /* ready barrier */
     sv_sem_signal(sem_id, 3);
 
-    run_utente(sem_id, erog_qid, serv_qid, done_qid, log_qid, plan, p_min, p_max, explode_qid);
+    run_utente(sem_id, erog_qid, serv_qid, done_qid, log_qid, plan, p_min, p_max, stats_qid);
 
     shm_detach(plan);
     return 0;

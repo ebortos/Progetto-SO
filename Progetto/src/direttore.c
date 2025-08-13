@@ -28,6 +28,44 @@ typedef struct {
     size_t n_pids;
 } process_table_t;
 
+typedef struct { 
+    pid_t pids[1024]; 
+    int n; 
+} pidset_t;
+
+typedef struct {
+    int served;
+    int interrupted;
+    int served_by[NUM_SERVICES];
+    int interrupted_by[NUM_SERVICES];
+
+    long long wait_ns_sum;     
+    long long service_ns_sum;           
+    long long wait_ns_by[NUM_SERVICES]; 
+    long long service_ns_by[NUM_SERVICES];
+
+    int pauses;
+    pidset_t active_ops_today;
+    pidset_t active_ops_today_by[NUM_SERVICES];
+} day_stats_t;
+
+typedef struct {
+    int days_run;
+
+    long served_total;
+    long interrupted_total;
+    long served_by_total[NUM_SERVICES];
+    long interrupted_by_total[NUM_SERVICES];
+
+    long long wait_ns_total;         
+    long long service_ns_total;          
+    long long wait_ns_by_total[NUM_SERVICES]; 
+    long long service_ns_by_total[NUM_SERVICES];
+
+    long pauses_total;
+    pidset_t active_ops_sim;
+} total_stats_t;
+
 extern char **environ;     //per execve
 process_table_t proc_table;
 config_t config;
@@ -71,6 +109,90 @@ int load_config(const char *fname, config_t *config) {
     return 0;
 }
 
+static int pidset_add(pidset_t *s, pid_t p) {
+    for (int i=0;i<s->n;i++) if (s->pids[i]==p) return 0;
+
+    if (s->n < (int)(sizeof s->pids/sizeof s->pids[0])) s->pids[s->n++] = p;
+
+    return 1;
+}
+
+static int pidset_size(const pidset_t *s) { return s->n; }
+
+static void pidset_clear(pidset_t *s) { s->n = 0; }
+
+static void reset_day_stats(day_stats_t *d) {
+    memset(d, 0, sizeof *d);
+    pidset_clear(&d->active_ops_today);
+
+    for (int s=0;s<NUM_SERVICES;s++) pidset_clear(&d->active_ops_today_by[s]);
+}
+
+static void init_totals(total_stats_t *t) {
+    memset(t, 0, sizeof *t);
+    pidset_clear(&t->active_ops_sim);
+}
+
+static void collect_day_stats(int stats_qid, day_stats_t *day, total_stats_t *total) {
+    stats_event_msg ev;
+    while (1) {
+        ssize_t r = msgrcv(stats_qid, &ev, MSGSZ(stats_event_msg), 0, IPC_NOWAIT | MSG_NOERROR);
+        if (r == -1) { if (errno == ENOMSG) break; perror("msgrcv (stats)"); exit(EXIT_FAILURE); }
+
+        switch (ev.evt) {
+            case STAT_EVT_SERVED: {
+                int s = ev.service_type;
+                day->served++;
+                if (s >= 0 && s < NUM_SERVICES) day->served_by[s]++;
+
+                day->wait_ns_sum += ev.wait_ns;
+                day->service_ns_sum += ev.service_ns;
+
+                if (s >= 0 && s < NUM_SERVICES) {
+                    day->wait_ns_by[s] += ev.wait_ns;
+                    day->service_ns_by[s] += ev.service_ns;
+                }
+            
+                total->served_total++;
+                total->wait_ns_total += ev.wait_ns;
+                total->service_ns_total += ev.service_ns;
+
+                if (s >= 0 && s < NUM_SERVICES) {
+                    total->served_by_total[s]++;
+                    total->wait_ns_by_total[s] += ev.wait_ns;
+                    total->service_ns_by_total[s] += ev.service_ns;
+                }
+                break;
+            }
+            
+            
+            case STAT_EVT_INTERRUPTED:
+                day->interrupted++;
+                if (ev.service_type >= 0 && ev.service_type < NUM_SERVICES) day->interrupted_by[ev.service_type]++;
+                total->interrupted_total++;
+
+                if (ev.service_type >= 0 && ev.service_type < NUM_SERVICES) total->interrupted_by_total[ev.service_type]++;
+                break;
+
+            case STAT_EVT_SEAT_ACQUIRED:
+                pidset_add(&day->active_ops_today, ev.pid);
+
+                if (ev.service_type >= 0 && ev.service_type < NUM_SERVICES) {
+                    pidset_add(&day->active_ops_today_by[ev.service_type], ev.pid);
+                }
+
+                pidset_add(&total->active_ops_sim, ev.pid);
+                break;
+
+            case STAT_EVT_PAUSE:
+                day->pauses++;
+                total->pauses_total++;
+                break;
+        }
+    }
+}
+
+
 int create_processes(const char *exec_path, int count, pid_t *pid_array, int start_index, char *const argv[]) {
     for (int i = 0; i < count; i++) {
         pid_t pid = fork(); 
@@ -89,6 +211,57 @@ int create_processes(const char *exec_path, int count, pid_t *pid_array, int sta
     }
 
     return 0;
+}
+
+static void print_day_stats(int log_qid, int day_idx, const day_stats_t *d, const day_plan_t *plan, long NANOS_SIM_MIN) {
+    log_sendf(log_qid, "\n=== STATISTICHE GIORNO %d ===\n", day_idx);
+    log_sendf(log_qid, "Utenti serviti oggi: %d\n", d->served);
+    log_sendf(log_qid, "Servizi NON erogati oggi (interrotti): %d\n", d->interrupted);
+    log_sendf(log_qid, "Operatori attivi oggi: %d\n", pidset_size(&d->active_ops_today));
+    log_sendf(log_qid, "Pause effettuate oggi: %d\n", d->pauses);
+
+    double avg_wait_min = (d->served > 0) ? (double)d->wait_ns_sum / (double)NANOS_SIM_MIN / d->served : 0.0;
+    double avg_serv_min = (d->served > 0) ? (double)d->service_ns_sum / (double)NANOS_SIM_MIN / d->served : 0.0;
+    log_sendf(log_qid, "Tempo medio attesa oggi: %.2f min\n", avg_wait_min);
+    log_sendf(log_qid, "Tempo medio erogazione oggi: %.2f min\n", avg_serv_min);
+
+    for (int s=0; s<NUM_SERVICES; ++s) {
+        int ops   = pidset_size(&d->active_ops_today_by[s]);
+        int seats = plan->counts[s];
+        double ratio = (seats>0) ? (double)ops / (double)seats : 0.0;
+
+        double avg_w_s = (d->served_by[s] > 0) ? (double)d->wait_ns_by[s]    / (double)NANOS_SIM_MIN / d->served_by[s] : 0.0;
+        double avg_sv  = (d->served_by[s] > 0) ? (double)d->service_ns_by[s] / (double)NANOS_SIM_MIN / d->served_by[s] : 0.0;
+
+        if (d->served_by[s] || d->interrupted_by[s] || seats>0 || ops>0) {
+            log_sendf(log_qid, "  Servizio %d: serviti=%d, non_erogati=%d, sportelli=%d, operatori_attivi=%d, ratio_op/sport=%0.2f, attesa_media=%.2f, erogazione_media=%.2f\n", s, d->served_by[s], d->interrupted_by[s], seats, ops, ratio, avg_w_s, avg_sv);
+        }
+    }
+}
+
+static void print_total_stats(int log_qid, const total_stats_t *t, long NANOS_SIM_MIN) {
+    double avg_served_per_day    = (t->days_run>0)? (double)t->served_total      / t->days_run : 0.0;
+    double avg_notserved_per_day = (t->days_run>0)? (double)t->interrupted_total / t->days_run : 0.0;
+    double avg_pauses_per_day    = (t->days_run>0)? (double)t->pauses_total      / t->days_run : 0.0;
+
+    double avg_wait_sim_min = (t->served_total>0)? (double)t->wait_ns_total    / (double)NANOS_SIM_MIN / t->served_total : 0.0;
+    double avg_serv_sim_min = (t->served_total>0)? (double)t->service_ns_total / (double)NANOS_SIM_MIN / t->served_total : 0.0;
+
+    log_sendf(log_qid, "\n=== STATISTICHE TOTALI ===\n");
+    log_sendf(log_qid, "Servizi erogati totali: %ld (media/giorno: %.2f)\n", t->served_total, avg_served_per_day); // alias of 'utenti serviti totali'
+    log_sendf(log_qid, "Servizi NON erogati totali: %ld (media/giorno: %.2f)\n", t->interrupted_total, avg_notserved_per_day);
+    log_sendf(log_qid, "Operatori attivi nella simulazione (distinti): %d\n", pidset_size(&t->active_ops_sim));
+    log_sendf(log_qid, "Pause totali: %ld (media/giorno: %.2f)\n", t->pauses_total, avg_pauses_per_day);
+
+    log_sendf(log_qid, "Tempo medio attesa (simulazione): %.2f min\n", avg_wait_sim_min);
+    log_sendf(log_qid, "Tempo medio erogazione (simulazione): %.2f min\n", avg_serv_sim_min);
+
+    for (int s=0; s<NUM_SERVICES; ++s) {
+        double avg_w_s = (t->served_by_total[s] > 0)? (double)t->wait_ns_by_total[s]    / (double)NANOS_SIM_MIN / t->served_by_total[s] : 0.0;
+        double avg_sv  = (t->served_by_total[s] > 0)? (double)t->service_ns_by_total[s] / (double)NANOS_SIM_MIN / t->served_by_total[s] : 0.0;
+
+        log_sendf(log_qid, "  Servizio %d: serviti_tot=%ld, non_erogati_tot=%ld, attesa_media=%.2f, erogazione_media=%.2f\n", s, t->served_by_total[s], t->interrupted_by_total[s], avg_w_s, avg_sv);
+    }
 }
 
 /* Spawns N sportelli, argv[1] = sportello id (0..N-1) */
@@ -149,7 +322,6 @@ static void assign_service_sportello(int day, int n_sportelli, int spor_msg_qid,
         msg.sportello_info.occupato     = 0;
         msg.sportello_info.operatore_id = -1;
 
-        /* IMPORTANT: size is payload excluding long mtype */
         if (msgsnd(spor_msg_qid, &msg, MSGSZ(sportello_msg_t), 0) == -1) {
             perror("msgsnd direttore->sportello");
             exit(EXIT_FAILURE);
@@ -157,40 +329,10 @@ static void assign_service_sportello(int day, int n_sportelli, int spor_msg_qid,
     }
 }
 
-static int check_explode(int sem_id, int n_broadcast, int stats_qid, int explode_threshold, int log_qid) {
-    int interrupted_today = 0;
-    int per_service[NUM_SERVICES] = {0};
-
-    erogatore_request_msg sm;
-    while (1) {
-        ssize_t r = msgrcv(stats_qid, &sm, MSGSZ(erogatore_request_msg), 0, IPC_NOWAIT | MSG_NOERROR);
-        if (r == -1) {
-            if (errno == ENOMSG) break;
-            perror("msgrcv (stats)"); exit(EXIT_FAILURE);
-        }
-        interrupted_today++;
-        if (sm.service_type >= 0 && sm.service_type < NUM_SERVICES)
-            per_service[sm.service_type]++;
-    }
-
-    log_sendf(log_qid, "[DIRETTORE] Interrotti oggi: %d (soglia=%d)\n", interrupted_today, explode_threshold);
-    for (int s = 0; s < NUM_SERVICES; ++s)
-        if (per_service[s] > 0)
-            log_sendf(log_qid, "  - servizio %d: %d\n", s, per_service[s]);
-
-    if (interrupted_today > explode_threshold) {
-        log_sendf(log_qid, "[DIRETTORE] *** EXPLODE TRESHOLD: TERMINO LA SIMULAZIONE ***\n");
-        sv_sem_set(sem_id, 2, 0);
-        sem_broadcast(sem_id, 2, n_broadcast);
-        return 1;
-    }
-    return 0;
-}
-
-void run_simulation(int sim_duration, const long NANOS_SIM_MIN, int sem_id, int n_broadcast, int log_qid, int spor_msg_qid, int n_sportelli, day_plan_t *plan, int explode_qid) {
+void run_simulation(int sim_duration, const long NANOS_SIM_MIN, int sem_id, int n_broadcast, int log_qid, int spor_msg_qid, int n_sportelli, day_plan_t *plan, int stats_qid, total_stats_t *total) {
     const int DAY_SIM_MINUTES = 8 * 60;  // 8h
 
-    struct timespec day = {
+    struct timespec day_ts = {
         .tv_sec  = (NANOS_SIM_MIN * (long)DAY_SIM_MINUTES) / 1000000000L,
         .tv_nsec = (NANOS_SIM_MIN * (long)DAY_SIM_MINUTES) % 1000000000L
     };
@@ -210,19 +352,38 @@ void run_simulation(int sim_duration, const long NANOS_SIM_MIN, int sem_id, int 
         for (int s = 0; s < NUM_SERVICES; ++s)  //pubblicazione posti sportello
             sv_sem_set(seats_sid, (unsigned short)s, plan->counts[s]);
 
+        day_stats_t dstats;    //reset daily stats
+        reset_day_stats(&dstats);
+
         log_sendf(log_qid, "\n[DIRETTORE] ======== Inizio giorno %d ========\n\n", d);
         sem_broadcast(sem_id, 0, n_broadcast);    //segnale di inizio giornata, sem 0
 
-        nanosleep(&day, NULL);
+        nanosleep(&day_ts, NULL);
 
         sem_broadcast(sem_id, 1, n_broadcast);    //segnale di fine giornata, sem 1
         wait_children_ready(sem_id, n_broadcast);
 
-        if (check_explode(sem_id, n_broadcast, explode_qid, config.EXPLODE_THRESHOLD, log_qid)) break;
+        collect_day_stats(stats_qid, &dstats, total);
 
-        log_sendf(log_qid, "\n[DIRETTORE] ======== Fine giorno %d ==========\n", d);
-        //Salvare stats qui (credo)
+        if (dstats.interrupted >= config.EXPLODE_THRESHOLD) {  //check explode
+            log_sendf(log_qid, "[DIRETTORE] Interrotti oggi: %d (soglia=%d)\n", dstats.interrupted, config.EXPLODE_THRESHOLD);
+            log_sendf(log_qid, "[DIRETTORE] *** SOGLIA SUPERATA: TERMINO LA SIMULAZIONE ***\n");
+
+        sv_sem_set(sem_id, 2, 0);
+        sem_broadcast(sem_id, 2, n_broadcast);
+        
+        print_day_stats(log_qid, d, &dstats, plan, NANOS_SIM_MIN);
+        total->days_run++;
+
+        break;
     }
+
+    // === normal day end: print and roll totals ===
+    print_day_stats(log_qid, d, &dstats, plan, NANOS_SIM_MIN);
+    log_sendf(log_qid, "\n[DIRETTORE] ======== Fine giorno %d ==========\n", d);
+
+    total->days_run++;
+}
 
     /* fine simulazione per TUTTI */
     sv_sem_set(sem_id, 2, 0);
@@ -252,6 +413,9 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
+    total_stats_t total; 
+    init_totals(&total);
+
     //Init semaphores
     key_t sem_key = ftok(FTOK_PATH_SEM, SEM_KEY_ID);
     int sem_id = create_semaphore_set(sem_key, 4);
@@ -278,7 +442,7 @@ int main() {
     (void)done_qid;
 
     //Init explode queue fresh
-    int explode_qid = init_msg_queue_fresh(get_queue_key(FTOK_PATH_EXPLODDE, MSG_QUEUE_ID_EXPLODE));
+    int stats_qid = init_msg_queue_fresh(get_queue_key(FTOK_PATH_STATS, MSG_QUEUE_ID_STATS));
 
 
     //day plan (read write)
@@ -322,7 +486,9 @@ int main() {
     // ======= SIMULATION ======= //
 
     wait_children_ready(sem_id, proc_table.n_pids);     //direttore aspetta che i figli siano tutti pronti
-    run_simulation(config.SIM_DURATION, config.N_NANO_SECS, sem_id, (proc_table.n_pids - 1), log_qid, spor_msg_qid, config.NOF_WORKER_SEATS, plan, explode_qid);
+    run_simulation(config.SIM_DURATION, config.N_NANO_SECS, sem_id, (proc_table.n_pids - 1), log_qid, spor_msg_qid, config.NOF_WORKER_SEATS, plan, stats_qid, &total);
+
+    print_total_stats(log_qid, &total, config.N_NANO_SECS);
 
     //wait children (except logger -> i = 1)
     for (size_t i = 1; i < proc_table.n_pids; ++i) {
