@@ -35,8 +35,8 @@
 #define FTOK_PATH_SEATS "../tmp/poste_seats"
 #define SEM_SEATS_ID 'T'
 
-#define FTOK_PATH_EXPLODDE  "../tmp/ftok_explode"
-#define MSG_QUEUE_ID_EXPLODE  'E'
+#define FTOK_PATH_STATS "../tmp/ftok_stats"
+#define MSG_QUEUE_ID_STATS 'E'
 
 #define MSGSZ(T) ((int)(sizeof(T) - sizeof(long)))
 
@@ -67,18 +67,17 @@ typedef struct {
     int service_type;
     pid_t pid;              //pid del richiedente
     int ticket_number;      //0 when asking erogatore; set when queueing for sportello
+    long long t_enqueue_ns;
 } erogatore_request_msg;
 
 typedef struct {
     long mtype;
     int ticket_number;
     int service_type;
-    //int  served_ok;      1=served, 0=failed (if you need) statistiche?
 } erogatore_reply_msg;
 
 typedef struct {
     int counts[NUM_SERVICES];   // how many sportelli serve each service today
-    //int day;                     optional: current sim day | statistiche?
 } day_plan_t;
 
 union semun {
@@ -96,6 +95,24 @@ enum {
     MTYPE_LOG_LINE     = 1,
     MTYPE_LOG_SHUTDOWN = 255
 };
+
+enum {
+    STAT_EVT_SERVED = 1,        //an utente was served (completed service)
+    STAT_EVT_INTERRUPTED = 2,   //an utente was interrupted at day end
+    STAT_EVT_SEAT_ACQUIRED = 3, //an operatore acquired a seat (counts as "active")
+    STAT_EVT_PAUSE = 4          //an operatore took a short pause
+};
+
+typedef struct {
+    long mtype;            //always 1
+    int  evt;              //STAT_EVT_*
+    pid_t pid;             //sender (utente/operatore)
+    int  service_type;     //0..NUM_SERVICES-1, or -1 if N/A
+    int  ticket_number;    //for served/interrupted
+    int  value;            //payload: e.g., pause_minutes
+    long long wait_ns;     //user waiting time (ns)
+    long long service_ns;  //service time (ns)
+} stats_event_msg;
 
 int init_msg_queue(key_t key);
 int init_msg_queue_fresh(key_t key); 
