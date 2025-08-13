@@ -20,37 +20,33 @@
 - l'utente, dopo essersi trastullato allo sportello viene rimosso dalla coda "implicitamente" con la chiamata __ssize_t r = msgrcv(serv_qid, &req, sizeof(req) - sizeof(long), (long)(my_service + 1), IPC_NOWAIT);__ eliminando di fatto la richiesta dell'utente dalla msgq
 - ora il direttore aspetta un segnale ready (sem3) alla fine di ogni giorno per assicurarsi che tutti i figli abbiano finito e siano pronti per il giorno successivo
 - operatore ha il 20% di possibilità di andare in pausa per 10 min
+- direttore comunica a operatore i posti sportello disponibili tramite shm (in scrittura per dir e lettura per op)
+- tutte le statistiche vengono mandate al direttore tramite la stats msgq, tramite questa viene fatto pure il controllo explode
 
 ## TO-DO
 
-- Aggiungere statistiche con shm
-- capire che stracazzo significa il paragrafo 5.6 della consegna, in particolare la parte sui conf (forse guardare la lezione di presentazione del progetto di schifanella può essere d'aiuto, ora non ho voglia), in caso cambiare (easy) lettura dei file in direttore __(si può lasciare anche per dopo)__
 - __ALLA FINE:__ guardare utils.c e rimuovere tutte le funzioni non utilizzate
 - cambiare tutte le chiamate di funzione per creare ipc con una funzione dedicata (es: vedere open_log_queue())__(si può lasciare anche per dopo)__
 
 ## Cose da fixare/controllare
 
-- logger non stampa shutdown finale (da controllare se sia effettivamente un problema)
-- capire come memorizzare questi dati _"le statistiche precedenti suddivise per tipologia di servizio"_ __(si può lasciare anche per dopo)__
-- capire se il controllo sem4 ha senso durante la giornata (after wake), __(si può lasciare anche per dopo)__
-
 ## Statistiche
 
-- il numero di utenti serviti totali nella simulazione
-- il numero di utenti serviti in media al giorno
-- il numero di servizi erogati totali nella simulazione
-- il numero di servizi non erogati totali nella simulazione
-- il numero di servizi erogati in media al giorno
-- il numero di servizi non erogati in media al giorno
-- il tempo medio di attesa degli utenti nella simulazione
-- il tempo medio di attesa degli utenti nella giornata
-- il tempo medio di erogazione dei servizi nella simulazione
-- il tempo medio di erogazione dei servizi nella giornata
-- le statistiche precedenti suddivise per tipologia di servizio
-- il numero di operatori attivi durante la giornata;
-- il numero di operatori attivi durante la simulazione;
-- il numero medio di pause effettuate nella giornata e il totale di pause effettuate durante la simulazione;
-- il rapporto fra operatori disponibili e sportelli esistenti, per ogni sportello per ogni giornata.
+- __OK__ il numero di utenti serviti totali nella simulazione
+- __OK__ il numero di utenti serviti in media al giorno
+- __OK__ il numero di servizi erogati totali nella simulazione
+- __OK__ il numero di servizi non erogati totali nella simulazione
+- __OK__ il numero di servizi erogati in media al giorno
+- __OK__ il numero di servizi non erogati in media al giorno
+- __OK__ il tempo medio di attesa degli utenti nella simulazione
+- __OK__ il tempo medio di attesa degli utenti nella giornata
+- __OK__ il tempo medio di erogazione dei servizi nella simulazione
+- __OK__ il tempo medio di erogazione dei servizi nella giornata
+- __OK__ le statistiche precedenti suddivise per tipologia di servizio
+- __OK__ il numero di operatori attivi durante la giornata;
+- __OK__ il numero di operatori attivi durante la simulazione;
+- __OK__ il numero medio di pause effettuate nella giornata e il totale di pause effettuate durante la simulazione;
+- __OK__ il rapporto fra operatori disponibili e sportelli esistenti, per ogni sportello per ogni giornata.
 
 ## Cose fatte E testate
 
@@ -69,4 +65,5 @@
 - Utente viene servito allo sportello
 - Utente viene interrotto alla fine della giornata e della sim se in mezzo a un servizio
 - Operatore va in pausa lasciando lo sportello libero per altri
-- Aggiunto osama bin laden (exlpode)
+- Aggiunto osama bin laden (explode)
+- Aggiunte stats
