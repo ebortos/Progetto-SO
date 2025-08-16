@@ -78,7 +78,7 @@ static void run_utente(int sem_id, int erog_qid, int serv_qid, int done_qid, int
     srand((unsigned)time(NULL) ^ (unsigned)me);
 
     while (1) {
-        /* 1) start of day */
+        /* start of day */
         sv_sem_wait(sem_id, 0);
 
         /* end of simulation right after wake? */
@@ -89,7 +89,7 @@ static void run_utente(int sem_id, int erog_qid, int serv_qid, int done_qid, int
         int asked_ticket = 0, got_ticket = 0, queued_sp = 0, served = 0;
         int my_ticket = -1, my_service = -1;
 
-        /* 2) decide whether to go today */
+        /* decide whether to go today */
         if (utente_rand_decision(p_min, p_max)) {
             my_service = rand() % NUM_SERVICES;
 
@@ -107,7 +107,7 @@ static void run_utente(int sem_id, int erog_qid, int serv_qid, int done_qid, int
             //log_sendf(log_qid, "[UTENTE %d] NO POSTE\n", (int)me);
         }
 
-        /* 3) during the day: wait for ticket, then enqueue to sportello, then wait for completion */
+        /* during the day: wait for ticket, then enqueue to sportello, then wait for completion */
         while (1) {
             int did_something = 0;
 
@@ -169,24 +169,27 @@ static void run_utente(int sem_id, int erog_qid, int serv_qid, int done_qid, int
 }
 
 int main(int argc, char *argv[]) {
-    setvbuf(stdout, NULL, _IOLBF, 0);
-
-    int log_qid  = open_log_queue();
+    key_t log_key = get_queue_key(FTOK_PATH_LOG, MSG_QUEUE_ID_LOG);
+    int log_qid = init_msg_queue(log_key);
 
     /* queues */
     int erog_qid = init_msg_queue(get_queue_key(FTOK_PATH_EROG, MSG_QUEUE_ID_EROG));
-    int serv_qid = open_service_queue();
-    int done_qid = open_done_queue();
+    
+    key_t serv_key = get_queue_key(FTOK_PATH_SERV, MSG_QUEUE_ID_SERV);
+    int serv_qid = init_msg_queue(serv_key);
+
+    key_t done_key = get_queue_key(FTOK_PATH_SERV, MSG_QUEUE_ID_SERV);
+    int done_qid = init_msg_queue(done_key);
+
     int stats_qid = init_msg_queue(get_queue_key(FTOK_PATH_STATS, MSG_QUEUE_ID_STATS));
 
-    /* semaphores (0 start,1 stop,2 end sim,3 ready) */
     key_t sem_key = ftok(FTOK_PATH_SEM, SEM_KEY_ID);
     int sem_id = semget(sem_key, 4, 0);
     if (sem_id == -1) { perror("semget"); exit(EXIT_FAILURE); }
 
     /* attach read-only day plan */
     key_t plan_key = get_queue_key(FTOK_PATH_PLAN, SHM_PLAN_ID);
-    int   plan_shmid = shm_get_existing(plan_key);
+    int   plan_shmid = shm_get(plan_key);
     const day_plan_t *plan = (const day_plan_t*)shm_attach(plan_shmid, 1);
 
 

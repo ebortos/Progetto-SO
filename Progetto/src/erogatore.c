@@ -11,24 +11,24 @@ void issue_ticket(int sem_id, int msg_id, int log_qid) {
     int ticket_counter = 1;
 
     while (1) {
-        /* 1) wait start-of-day (blocking) */
+        //wait start of day
         sv_sem_wait(sem_id, 0);
 
-        /* 1.b) end-of-sim immediately after waking? (don’t consume sem2) */
+        //end of sim right after waking?
         int v = semctl(sem_id, 2, GETVAL);
         if (v == -1) { perror("semctl GETVAL"); exit(EXIT_FAILURE); }
         if (v > 0) return;
 
-        /* 2) day loop: drain all pending requests, THEN check semaphores */
-        for (;;) {
+        //new day
+        while (1) {
             int processed = 0;
 
-            /* Drain: read all requests currently in the queue */
+            //read all requests currently in the queue
             while (1) {
                 erogatore_request_msg req;
                 ssize_t r = msgrcv(msg_id, &req, MSGSZ(erogatore_request_msg), MTYPE_REQUEST, IPC_NOWAIT);
                 if (r == -1) {
-                    if (errno == ENOMSG) break;     /* nothing left right now */
+                    if (errno == ENOMSG) break;     //msg finished
                     perror("msgrcv erog"); exit(EXIT_FAILURE);
                 }
 
@@ -45,9 +45,9 @@ void issue_ticket(int sem_id, int msg_id, int log_qid) {
                 processed++;
             }
 
-            /* After draining: check end-of-simulation, then end-of-day */
+            //end of sim (during day)
             int t = sv_sem_trywait(sem_id, 2);
-            if (t == 1) return;                      /* simulation ended */
+            if (t == 1) return;
             if (t == -1) { perror("sv_sem_trywait sem2"); exit(EXIT_FAILURE); }
 
             int e = sv_sem_trywait(sem_id, 1);
@@ -56,10 +56,9 @@ void issue_ticket(int sem_id, int msg_id, int log_qid) {
                 sv_sem_signal(sem_id, 3); //end of day arrival
                 break; 
             }
-                                   /* day ended -> next day */
+
             if (e == -1) { perror("sv_sem_trywait sem1"); exit(EXIT_FAILURE); }
 
-            /* Nothing to do? tiny backoff to avoid busy loop */
             if (processed == 0) sched_yield();
         }
     }
@@ -68,9 +67,8 @@ void issue_ticket(int sem_id, int msg_id, int log_qid) {
 
 
 int main(int argc, char *argv[]) {
-    setvbuf(stdout, NULL, _IOLBF, 0);   /* stdout line-buffered */
-
-    int log_qid = open_log_queue();
+    key_t log_key = get_queue_key(FTOK_PATH_LOG, MSG_QUEUE_ID_LOG);
+    int log_qid = init_msg_queue(log_key);
 
     key_t mq_key = get_queue_key(FTOK_PATH_EROG, MSG_QUEUE_ID_EROG);
     int msg_id = init_msg_queue(mq_key);

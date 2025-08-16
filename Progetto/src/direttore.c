@@ -28,6 +28,7 @@ typedef struct {
     size_t n_pids;
 } process_table_t;
 
+//set universale alla simulazione con i pid degli operatori (per statistiche)
 typedef struct { 
     pid_t pids[1024]; 
     int n; 
@@ -109,6 +110,7 @@ int load_config(const char *fname, config_t *config) {
     return 0;
 }
 
+
 static int pidset_add(pidset_t *s, pid_t p) {
     for (int i=0;i<s->n;i++) if (s->pids[i]==p) return 0;
 
@@ -119,6 +121,7 @@ static int pidset_add(pidset_t *s, pid_t p) {
 
 static int pidset_size(const pidset_t *s) { return s->n; }
 
+//reset pidset to empty
 static void pidset_clear(pidset_t *s) { s->n = 0; }
 
 static void reset_day_stats(day_stats_t *d) {
@@ -192,6 +195,56 @@ static void collect_day_stats(int stats_qid, day_stats_t *day, total_stats_t *to
     }
 }
 
+static void print_day_stats(int log_qid, int day_idx, const day_stats_t *d, const day_plan_t *plan, long NANOS_SIM_MIN) {
+    log_sendf(log_qid, "\n=== STATISTICHE GIORNO %d ===\n", day_idx);
+    log_sendf(log_qid, "Utenti serviti oggi: %d\n", d->served);
+    log_sendf(log_qid, "Servizi NON erogati oggi (interrotti): %d\n", d->interrupted);
+    log_sendf(log_qid, "Operatori attivi oggi: %d\n", pidset_size(&d->active_ops_today));
+    log_sendf(log_qid, "Pause effettuate oggi: %d\n", d->pauses);
+
+    double avg_wait_min = (d->served > 0) ? (double)d->wait_ns_sum / (double)NANOS_SIM_MIN / d->served : 0.0;
+    double avg_serv_min = (d->served > 0) ? (double)d->service_ns_sum / (double)NANOS_SIM_MIN / d->served : 0.0;
+    log_sendf(log_qid, "Tempo medio attesa oggi: %.2f min\n", avg_wait_min);
+    log_sendf(log_qid, "Tempo medio erogazione oggi: %.2f min\n", avg_serv_min);
+
+    for (int s=0; s<NUM_SERVICES; ++s) {
+        int ops   = pidset_size(&d->active_ops_today_by[s]);
+        int seats = plan->counts[s];
+        double ratio = (seats>0) ? (double)ops / (double)seats : 0.0;
+
+        double avg_w_s = (d->served_by[s] > 0) ? (double)d->wait_ns_by[s] / (double)NANOS_SIM_MIN / d->served_by[s] : 0.0;
+        double avg_sv  = (d->served_by[s] > 0) ? (double)d->service_ns_by[s] / (double)NANOS_SIM_MIN / d->served_by[s] : 0.0;
+
+        if (d->served_by[s] || d->interrupted_by[s] || seats>0 || ops>0) {
+            log_sendf(log_qid, "  Servizio %d: serviti=%d, non erogati=%d, sportelli=%d, operatori attivi=%d, rapporto op/spor=%0.2f, attesa media=%.2f, erogazione media=%.2f\n", s, d->served_by[s], d->interrupted_by[s], seats, ops, ratio, avg_w_s, avg_sv);
+        }
+    }
+}
+
+static void print_total_stats(int log_qid, const total_stats_t *t, long NANOS_SIM_MIN) {
+    double avg_served_per_day = (t->days_run>0)? (double)t->served_total / t->days_run : 0.0;
+    double avg_notserved_per_day = (t->days_run>0)? (double)t->interrupted_total / t->days_run : 0.0;
+    double avg_pauses_per_day = (t->days_run>0)? (double)t->pauses_total / t->days_run : 0.0;
+
+    double avg_wait_sim_min = (t->served_total>0)? (double)t->wait_ns_total    / (double)NANOS_SIM_MIN / t->served_total : 0.0;
+    double avg_serv_sim_min = (t->served_total>0)? (double)t->service_ns_total / (double)NANOS_SIM_MIN / t->served_total : 0.0;
+
+    log_sendf(log_qid, "\n=== STATISTICHE TOTALI ===\n");
+    log_sendf(log_qid, "Servizi erogati totali: %ld (media/giorno: %.2f)\n", t->served_total, avg_served_per_day);
+    log_sendf(log_qid, "Servizi NON erogati totali: %ld (media/giorno: %.2f)\n", t->interrupted_total, avg_notserved_per_day);
+    log_sendf(log_qid, "Operatori attivi nella simulazione (distinti): %d\n", pidset_size(&t->active_ops_sim));
+    log_sendf(log_qid, "Pause totali: %ld (media/giorno: %.2f)\n", t->pauses_total, avg_pauses_per_day);
+
+    log_sendf(log_qid, "Tempo medio attesa (simulazione): %.2f min\n", avg_wait_sim_min);
+    log_sendf(log_qid, "Tempo medio erogazione (simulazione): %.2f min\n", avg_serv_sim_min);
+
+    for (int s=0; s<NUM_SERVICES; ++s) {
+        double avg_w_s = (t->served_by_total[s] > 0)? (double)t->wait_ns_by_total[s]    / (double)NANOS_SIM_MIN / t->served_by_total[s] : 0.0;
+        double avg_sv  = (t->served_by_total[s] > 0)? (double)t->service_ns_by_total[s] / (double)NANOS_SIM_MIN / t->served_by_total[s] : 0.0;
+
+        log_sendf(log_qid, "  Servizio %d: serviti tot=%ld, non erogati tot=%ld, attesa media=%.2f, erogazione media=%.2f\n", s, t->served_by_total[s], t->interrupted_by_total[s], avg_w_s, avg_sv);
+    }
+}
 
 int create_processes(const char *exec_path, int count, pid_t *pid_array, int start_index, char *const argv[]) {
     for (int i = 0; i < count; i++) {
@@ -213,58 +266,6 @@ int create_processes(const char *exec_path, int count, pid_t *pid_array, int sta
     return 0;
 }
 
-static void print_day_stats(int log_qid, int day_idx, const day_stats_t *d, const day_plan_t *plan, long NANOS_SIM_MIN) {
-    log_sendf(log_qid, "\n=== STATISTICHE GIORNO %d ===\n", day_idx);
-    log_sendf(log_qid, "Utenti serviti oggi: %d\n", d->served);
-    log_sendf(log_qid, "Servizi NON erogati oggi (interrotti): %d\n", d->interrupted);
-    log_sendf(log_qid, "Operatori attivi oggi: %d\n", pidset_size(&d->active_ops_today));
-    log_sendf(log_qid, "Pause effettuate oggi: %d\n", d->pauses);
-
-    double avg_wait_min = (d->served > 0) ? (double)d->wait_ns_sum / (double)NANOS_SIM_MIN / d->served : 0.0;
-    double avg_serv_min = (d->served > 0) ? (double)d->service_ns_sum / (double)NANOS_SIM_MIN / d->served : 0.0;
-    log_sendf(log_qid, "Tempo medio attesa oggi: %.2f min\n", avg_wait_min);
-    log_sendf(log_qid, "Tempo medio erogazione oggi: %.2f min\n", avg_serv_min);
-
-    for (int s=0; s<NUM_SERVICES; ++s) {
-        int ops   = pidset_size(&d->active_ops_today_by[s]);
-        int seats = plan->counts[s];
-        double ratio = (seats>0) ? (double)ops / (double)seats : 0.0;
-
-        double avg_w_s = (d->served_by[s] > 0) ? (double)d->wait_ns_by[s]    / (double)NANOS_SIM_MIN / d->served_by[s] : 0.0;
-        double avg_sv  = (d->served_by[s] > 0) ? (double)d->service_ns_by[s] / (double)NANOS_SIM_MIN / d->served_by[s] : 0.0;
-
-        if (d->served_by[s] || d->interrupted_by[s] || seats>0 || ops>0) {
-            log_sendf(log_qid, "  Servizio %d: serviti=%d, non_erogati=%d, sportelli=%d, operatori_attivi=%d, ratio_op/sport=%0.2f, attesa_media=%.2f, erogazione_media=%.2f\n", s, d->served_by[s], d->interrupted_by[s], seats, ops, ratio, avg_w_s, avg_sv);
-        }
-    }
-}
-
-static void print_total_stats(int log_qid, const total_stats_t *t, long NANOS_SIM_MIN) {
-    double avg_served_per_day    = (t->days_run>0)? (double)t->served_total      / t->days_run : 0.0;
-    double avg_notserved_per_day = (t->days_run>0)? (double)t->interrupted_total / t->days_run : 0.0;
-    double avg_pauses_per_day    = (t->days_run>0)? (double)t->pauses_total      / t->days_run : 0.0;
-
-    double avg_wait_sim_min = (t->served_total>0)? (double)t->wait_ns_total    / (double)NANOS_SIM_MIN / t->served_total : 0.0;
-    double avg_serv_sim_min = (t->served_total>0)? (double)t->service_ns_total / (double)NANOS_SIM_MIN / t->served_total : 0.0;
-
-    log_sendf(log_qid, "\n=== STATISTICHE TOTALI ===\n");
-    log_sendf(log_qid, "Servizi erogati totali: %ld (media/giorno: %.2f)\n", t->served_total, avg_served_per_day); // alias of 'utenti serviti totali'
-    log_sendf(log_qid, "Servizi NON erogati totali: %ld (media/giorno: %.2f)\n", t->interrupted_total, avg_notserved_per_day);
-    log_sendf(log_qid, "Operatori attivi nella simulazione (distinti): %d\n", pidset_size(&t->active_ops_sim));
-    log_sendf(log_qid, "Pause totali: %ld (media/giorno: %.2f)\n", t->pauses_total, avg_pauses_per_day);
-
-    log_sendf(log_qid, "Tempo medio attesa (simulazione): %.2f min\n", avg_wait_sim_min);
-    log_sendf(log_qid, "Tempo medio erogazione (simulazione): %.2f min\n", avg_serv_sim_min);
-
-    for (int s=0; s<NUM_SERVICES; ++s) {
-        double avg_w_s = (t->served_by_total[s] > 0)? (double)t->wait_ns_by_total[s]    / (double)NANOS_SIM_MIN / t->served_by_total[s] : 0.0;
-        double avg_sv  = (t->served_by_total[s] > 0)? (double)t->service_ns_by_total[s] / (double)NANOS_SIM_MIN / t->served_by_total[s] : 0.0;
-
-        log_sendf(log_qid, "  Servizio %d: serviti_tot=%ld, non_erogati_tot=%ld, attesa_media=%.2f, erogazione_media=%.2f\n", s, t->served_by_total[s], t->interrupted_by_total[s], avg_w_s, avg_sv);
-    }
-}
-
-/* Spawns N sportelli, argv[1] = sportello id (0..N-1) */
 static int create_sportelli(int n, pid_t *pid_array, int start_index) {
     for (int i = 0; i < n; ++i) {
         char idbuf[16];
@@ -297,7 +298,7 @@ static void create_operatori() {
 void wait_children_ready(int sem_id, int n_ready) {
     //printf("[DIRETTORE]   Attendo %d processi ready …\n", n_ready);
 
-    for (int i = 0; i < n_ready; ++i)         /* blocca finché ognuno non fa +1 */
+    for (int i = 0; i < n_ready; ++i)         //blocca finché ogni figlio non fa +1
         sv_sem_wait(sem_id, 3);
 
     //printf("[DIRETTORE]   Tutti i figli sono ready\n");
@@ -311,15 +312,14 @@ static void sem_broadcast(int sem_id, int sem_num, int count) {
 static void assign_service_sportello(int day, int n_sportelli, int spor_msg_qid, day_plan_t *plan) {
     memset(plan->counts, 0, sizeof(plan->counts));
     
-
     for (int i = 0; i < n_sportelli; ++i) {
         int service = rand() % NUM_SERVICES;
         plan->counts[service]++;
 
         sportello_msg_t msg;
-        msg.mtype = 1000 + i;                     // sportello i listens here
+        msg.mtype = 1000 + i;
         msg.sportello_info.service_type = service;
-        msg.sportello_info.occupato     = 0;
+        msg.sportello_info.occupato = 0;
         msg.sportello_info.operatore_id = -1;
 
         if (msgsnd(spor_msg_qid, &msg, MSGSZ(sportello_msg_t), 0) == -1) {
@@ -361,7 +361,7 @@ void run_simulation(int sim_duration, const long NANOS_SIM_MIN, int sem_id, int 
         nanosleep(&day_ts, NULL);
 
         sem_broadcast(sem_id, 1, n_broadcast);    //segnale di fine giornata, sem 1
-        wait_children_ready(sem_id, n_broadcast);
+        wait_children_ready(sem_id, n_broadcast); //dir aspetta figli alla fine della giornata per iniziare la successiva
 
         collect_day_stats(stats_qid, &dstats, total);
 
@@ -378,22 +378,20 @@ void run_simulation(int sim_duration, const long NANOS_SIM_MIN, int sem_id, int 
         break;
     }
 
-    // === normal day end: print and roll totals ===
+    //fine regolare della giornata
     print_day_stats(log_qid, d, &dstats, plan, NANOS_SIM_MIN);
     log_sendf(log_qid, "\n[DIRETTORE] ======== Fine giorno %d ==========\n", d);
 
     total->days_run++;
 }
 
-    /* fine simulazione per TUTTI */
+    //fine simulazione per tutti
     sv_sem_set(sem_id, 2, 0);
-    sem_broadcast(sem_id, 2, n_broadcast);
-    sem_broadcast(sem_id, 0, n_broadcast);   /* sveglia chiunque sia fermo su sem0 (di sicurezza) */
+    sem_broadcast(sem_id, 2, n_broadcast);   //segnale di fine sim, sem2
+    sem_broadcast(sem_id, 0, n_broadcast);   //sveglia chiunque sia fermo su sem0 (di sicurezza)
 }
 
 int main() {
-    setvbuf(stdout, NULL, _IOLBF, 0);   /* stdout line-buffered */
-
     srand(time(NULL) ^ getpid());
 
     if (load_config("../config.conf", &config) != 0) {
@@ -425,7 +423,8 @@ int main() {
     int seats_sid = create_semaphore_set(seats_key, NUM_SERVICES);
     
     //Init msg queue logger
-    int log_qid = open_log_queue();
+    key_t log_key = get_queue_key(FTOK_PATH_LOG, MSG_QUEUE_ID_LOG);
+    int log_qid = init_msg_queue(log_key);
 
     //Fresh init msg queue erogatore
     key_t erog_key = get_queue_key(FTOK_PATH_EROG, MSG_QUEUE_ID_EROG);
@@ -444,14 +443,13 @@ int main() {
     //Init explode queue fresh
     int stats_qid = init_msg_queue_fresh(get_queue_key(FTOK_PATH_STATS, MSG_QUEUE_ID_STATS));
 
-
     //day plan (read write)
     key_t plan_key = ftok(FTOK_PATH_PLAN, SHM_PLAN_ID);
-    int   plan_shmid = shmget(plan_key, sizeof(day_plan_t), IPC_CREAT | 0666);
+    int plan_shmid = shmget(plan_key, sizeof(day_plan_t), IPC_CREAT | 0666);
     if (plan_shmid == -1) { perror("shmget plan"); exit(EXIT_FAILURE); }
     day_plan_t *plan = shm_attach(plan_shmid, 0);
     if (plan == (void *)-1) { perror("shmat plan"); exit(EXIT_FAILURE); }
-    memset(plan, 0, sizeof(*plan));              // clear once
+    memset(plan, 0, sizeof(*plan));     //clear once
 
 
     //======= SPAWN PROCESSES ========//
@@ -501,7 +499,6 @@ int main() {
     waitpid(proc_table.all_pids[0], NULL, 0);
 
     //cleanup
-    shmdt(plan);
     cleanup_all_ipc();
     free(proc_table.all_pids);
 

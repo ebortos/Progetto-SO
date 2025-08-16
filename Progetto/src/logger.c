@@ -2,14 +2,8 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/msg.h>
-#include <sys/sem.h>
-#include <unistd.h>
 
 int main(void) {
-    setvbuf(stdout, NULL, _IOLBF, 0);  /* flush per riga */
-
-    /* semafori (0 start,1 stop,2 end,3 ready) */
     key_t sem_key = ftok(FTOK_PATH_SEM, SEM_KEY_ID);
     if (sem_key == -1) { 
         perror("ftok sem");
@@ -22,13 +16,12 @@ int main(void) {
         exit(EXIT_FAILURE); 
     }
 
-    /* coda logger */
-    int log_qid = open_log_queue();
+    key_t log_key = get_queue_key(FTOK_PATH_LOG, MSG_QUEUE_ID_LOG);
+    int log_qid = init_msg_queue(log_key);
 
-    /* barriera ready */
+    //ready
     sv_sem_signal(sem_id, 3);
 
-    /* loop ricezione */
     while (1) {
         log_msg_t m;
         ssize_t r = msgrcv(log_qid, &m, sizeof(m) - sizeof(long), 0, 0);
@@ -43,7 +36,6 @@ int main(void) {
             break;
         }
 
-        /* stampa la riga così com’è (già formattata dai mittenti) */
         fputs(m.text, stdout);
         fflush(stdout);
     }

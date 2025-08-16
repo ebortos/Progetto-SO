@@ -33,7 +33,7 @@ static inline void stats_send(int qid, int evt, pid_t pid, int service_type, int
     }
 }
 
-/* duration per service (ms) */
+//duration per service (ms)
 static int service_ms(int s) {
     switch (s) {
         case PACCHI:               return 10;
@@ -46,8 +46,7 @@ static int service_ms(int s) {
     }
 }
 
-/* serve a job but allow interrupts from end-of-day (sem1) or end-of-sim (sem2)
-   returns 1 if fully served, 0 if aborted */
+//serve a job but allow interrupts from end-of-day (sem1) or end-of-sim (sem2) returns 1 if fully served, 0 if aborted
 static int serve_job(int sem_id, int service_type, const long NANOS_SIM_MIN) {
     int remaining = service_ms(service_type);
 
@@ -102,9 +101,9 @@ static inline int should_pause_today(int pauses_left) {
 }
 
 // Returns:
-//   0 => pause completed, seat re-acquired: keep working this day
-//   1 => end-of-day happened during pause/wait: caller should ACK sem3 and go next day
-//   2 => end-of-sim happened: caller should exit
+//   0 -> pause completed, seat re-acquired: keep working this day
+//   1 -> end-of-day happened during pause/wait: caller should ACK sem3 and go next day
+//   2 -> end-of-sim happened: caller should exit
 static int try_short_pause(int sem_id, int seats_sid, int my_service, long NANOS_SIM_MIN, int pause_minutes, int *has_seat, int *pauses_left, int log_qid, int stats_qid) {
     if (!should_pause_today(*pauses_left)) return 0;
 
@@ -165,13 +164,13 @@ static void run_operatore(int sem_id, int serv_qid, int done_qid, int log_qid, i
             if (seat_try_acquire(seats_sid, my_service)) {
                 has_seat = 1;
 
-                // NEW: stats — operator is active today (unique per day)
                 if (!announced_today) {
                     stats_send(stats_qid, STAT_EVT_SEAT_ACQUIRED, me, my_service, -1, 0, 0, 0);
                     announced_today = 1;
                 }
                 break;
             }
+            
             /* end-of-sim while waiting? */
             int t = sv_sem_trywait(sem_id, 2);
             if (t == 1) return;
@@ -275,12 +274,10 @@ static void run_operatore(int sem_id, int serv_qid, int done_qid, int log_qid, i
 }
 
 int main(int argc, char *argv[]) {
-    setvbuf(stdout, NULL, _IOLBF, 0);
-
     srand(time(NULL) ^ getpid());
 
     int my_service = atoi(argv[1]);
-    long NANOS_SIM_MIN  = strtoll(argv[2], NULL, 10);
+    long NANOS_SIM_MIN = strtoll(argv[2], NULL, 10);
     int pauses_left = atoi(argv[3]);
 
     /* semaphores (0 start,1 stop,2 end sim,3 ready) */
@@ -288,14 +285,21 @@ int main(int argc, char *argv[]) {
     int sem_id = semget(sem_key, 4, 0);
     if (sem_id == -1) { perror("semget"); return EXIT_FAILURE; }
 
+    
     key_t seats_key = ftok(FTOK_PATH_SEATS, SEM_SEATS_ID);
     int seats_sid = semget(seats_key, NUM_SERVICES, 0);
     if (seats_sid == -1) { perror("semget seats"); return EXIT_FAILURE; }
 
     /* queues */
-    int log_qid  = open_log_queue();
-    int serv_qid = open_service_queue();
-    int done_qid = open_done_queue();
+    key_t log_key = get_queue_key(FTOK_PATH_LOG, MSG_QUEUE_ID_LOG);
+    int log_qid = init_msg_queue(log_key);
+
+    key_t serv_key = get_queue_key(FTOK_PATH_SERV, MSG_QUEUE_ID_SERV);
+    int serv_qid = init_msg_queue(serv_key);
+
+    key_t done_key = get_queue_key(FTOK_PATH_SERV, MSG_QUEUE_ID_SERV);
+    int done_qid = init_msg_queue(done_key);
+
     int stats_qid = init_msg_queue(get_queue_key(FTOK_PATH_STATS, MSG_QUEUE_ID_STATS));
 
 

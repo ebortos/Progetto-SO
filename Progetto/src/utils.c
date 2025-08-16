@@ -19,8 +19,7 @@ int init_msg_queue(key_t key) {
     return msg_id;
 }
 
-/* Remove the queue if it exists, then recreate it empty.
-   Use this ONCE at startup (best: in the director, before forking). */
+//remove the queue if it exists, then recreate it empty.
 int init_msg_queue_fresh(key_t key) {
     /* Try create exclusively: if it works, it's brand new. */
     int id = msgget(key, IPC_CREAT | IPC_EXCL | 0666);
@@ -40,7 +39,7 @@ int init_msg_queue_fresh(key_t key) {
         }
     }
 
-    /* Recreate. Tiny retry loop to be robust against races. */
+    /* Recreate */
     for (int i = 0; i < 4; ++i) {
         id = msgget(key, IPC_CREAT | IPC_EXCL | 0666);
         if (id != -1) return id;
@@ -168,11 +167,6 @@ void sv_sem_set(int sem_id, int sem_num, int value) {
 }
 
 //Logger
-int open_log_queue() {
-    key_t key = get_queue_key(FTOK_PATH_LOG, MSG_QUEUE_ID_LOG);
-    return init_msg_queue(key);
-}
-
 int log_sendf(int log_qid, const char *fmt, ...) {
     log_msg_t m;
     m.mtype = MTYPE_LOG_LINE;
@@ -185,7 +179,7 @@ int log_sendf(int log_qid, const char *fmt, ...) {
     return msgsnd(log_qid, &m, sizeof(m) - sizeof(long), 0);
 }
 
-/* Invia messaggio di shutdown al logger */
+//Invia messaggio di shutdown al logger
 int log_send_shutdown(int log_qid) {
     log_msg_t m;
     m.mtype = MTYPE_LOG_SHUTDOWN;
@@ -193,31 +187,27 @@ int log_send_shutdown(int log_qid) {
     return msgsnd(log_qid, &m, sizeof(m) - sizeof(long), 0);
 }
 
-//chiude tutte le ipc, aggiungere qua eventuali ipc nuove
+//chiude tutte le ipc
 void cleanup_all_ipc(void) {
-    key_t k_sem  = ftok(FTOK_PATH_SEM,  SEM_KEY_ID);
-    key_t k_log  = ftok(FTOK_PATH_LOG,  MSG_QUEUE_ID_LOG);
-    key_t k_erog = ftok(FTOK_PATH_EROG, MSG_QUEUE_ID_EROG);
-    key_t k_spor = ftok(FTOK_PATH_SPOR, MSG_QUEUE_ID_SPOR);
+    //queues
+    remove_msg_queue(get_queue_key(FTOK_PATH_EROG,  MSG_QUEUE_ID_EROG));
+    remove_msg_queue(get_queue_key(FTOK_PATH_SPOR,  MSG_QUEUE_ID_SPOR));
+    remove_msg_queue(get_queue_key(FTOK_PATH_SERV,  MSG_QUEUE_ID_SERV));
+    remove_msg_queue(get_queue_key(FTOK_PATH_DONE,  MSG_QUEUE_ID_DONE));
+    remove_msg_queue(get_queue_key(FTOK_PATH_LOG,   MSG_QUEUE_ID_LOG));
+    remove_msg_queue(get_queue_key(FTOK_PATH_STATS, MSG_QUEUE_ID_STATS));
 
-    remove_msg_queue(k_log);
-    remove_msg_queue(k_erog);
-    remove_msg_queue(k_spor);
+    //sem
+    remove_semaphore_set(ftok(FTOK_PATH_SEM, SEM_KEY_ID));
+    remove_semaphore_set(ftok(FTOK_PATH_SEATS, SEM_SEATS_ID));
 
-    remove_semaphore_set(k_sem);
+    //shm
+    key_t plan_key = ftok(FTOK_PATH_PLAN, SHM_PLAN_ID);
+    int shmid = shmget(plan_key, sizeof(day_plan_t), 0666);
+    if (shmid != -1) shmctl(shmid, IPC_RMID, NULL);
 }
 
-int open_service_queue(void) {
-    key_t k = get_queue_key(FTOK_PATH_SERV, MSG_QUEUE_ID_SERV);
-    return init_msg_queue(k);
-}
-
-int open_done_queue(void) {
-    key_t k = get_queue_key(FTOK_PATH_DONE, MSG_QUEUE_ID_DONE);
-    return init_msg_queue(k);
-}
-
-/* Remove every message currently in the queue (non-blocking). Returns count removed. */
+//remove every message currently in the queue (non-blocking). Returns count removed.
 int purge_queue_all(int qid) {
     int removed = 0;
 
@@ -235,14 +225,8 @@ int purge_queue_all(int qid) {
 }
 
 //Shared memory
-int shm_get_or_create(key_t key, size_t size) {
-    int id = shmget(key, size, IPC_CREAT | 0666);
-    if (id == -1) { perror("shmget(create)"); exit(EXIT_FAILURE); }
-    return id;
-}
-
-int shm_get_existing(key_t key) {
-    int id = shmget(key, 0, 0); /* size 0 is OK when not creating */
+int shm_get(key_t key) {
+    int id = shmget(key, 0, 0);
     if (id == -1) { perror("shmget(get)"); exit(EXIT_FAILURE); }
     return id;
 }
@@ -255,8 +239,4 @@ void* shm_attach(int shmid, int readonly) {
 
 void shm_detach(const void *addr) {
     if (shmdt((void*)addr) == -1) perror("shmdt");
-}
-
-void shm_remove(int shmid) {
-    if (shmctl(shmid, IPC_RMID, NULL) == -1) perror("shmctl(IPC_RMID)");
 }

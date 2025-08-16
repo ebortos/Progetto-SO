@@ -40,7 +40,7 @@
 
 #define MSGSZ(T) ((int)(sizeof(T) - sizeof(long)))
 
-//tipologie servizi (da verificare se è utlizzato da più file, altrimenti recluderlo nell'unico bastardo che lo usa)
+//tipologie servizi
 typedef enum {
     PACCHI = 0,
     LETTERE = 1,
@@ -77,7 +77,7 @@ typedef struct {
 } erogatore_reply_msg;
 
 typedef struct {
-    int counts[NUM_SERVICES];   // how many sportelli serve each service today
+    int counts[NUM_SERVICES];   //how many sportelli serve each service today
 } day_plan_t;
 
 union semun {
@@ -104,12 +104,12 @@ enum {
 };
 
 typedef struct {
-    long mtype;            //always 1
+    long mtype;
     int  evt;              //STAT_EVT_*
     pid_t pid;             //sender (utente/operatore)
     int  service_type;     //0..NUM_SERVICES-1, or -1 if N/A
     int  ticket_number;    //for served/interrupted
-    int  value;            //payload: e.g., pause_minutes
+    int  value;            //e.g. pause_minutes
     long long wait_ns;     //user waiting time (ns)
     long long service_ns;  //service time (ns)
 } stats_event_msg;
@@ -126,20 +126,14 @@ int sv_sem_trywait(int sem_id, int sem_num);
 void sv_sem_signal(int sem_id, int sem_num);
 void sv_sem_set(int sem_id, int sem_num, int value);
 
-int open_log_queue(void);
 int log_sendf(int log_qid, const char *fmt, ...);
 int log_send_shutdown(int log_qid);
 
 void cleanup_all_ipc(void);
 int purge_queue_all(int qid);
 
-int open_service_queue(void);
-int open_done_queue(void);
-
-int shm_get_or_create(key_t key, size_t size);
-int shm_get_existing(key_t key);
+int shm_get(key_t key);
 void* shm_attach(int shmid, int readonly);
 void shm_detach(const void *addr);
-void shm_remove(int shmid);
 
 #endif
