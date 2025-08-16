@@ -25,9 +25,6 @@
 
 ## TO-DO
 
-- __ALLA FINE:__ guardare utils.c e rimuovere tutte le funzioni non utilizzate
-- cambiare tutte le chiamate di funzione per creare ipc con una funzione dedicata (es: vedere open_log_queue())__(si può lasciare anche per dopo)__
-
 ## Cose da fixare/controllare
 
 ## Statistiche
