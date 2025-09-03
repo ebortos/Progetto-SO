@@ -1,6 +1,3 @@
-# MAKEFILE TEMPORANEO (palese da chatgpt), ricontrollare alla fine
-# per semplificare la compilazione
-
 # === Paths ===
 SRC_DIR     := src
 BUILD_DIR   := build
@@ -15,7 +12,6 @@ CFLAGS  := -Wvla -Wextra -Werror -I$(INCLUDE_DIR)
 MAINS := direttore erogatore sportello operatore utente logger
 
 # === Sorgenti/oggetti "comuni" (senza main) ===
-# aggiungi qui altri moduli condivisi (es: ipc_utils.c, logger_utils.c, ...)
 COMMON_SRC := $(SRC_DIR)/utils.c
 COMMON_OBJ := $(COMMON_SRC:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
 

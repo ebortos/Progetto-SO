@@ -1,6 +1,6 @@
 # TO-DO, Dubbi, Chiarimenti
 
-## FUNZIONA DIOMERDA
+
 
 ## Linee Guida
 
