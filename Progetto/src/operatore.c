@@ -76,7 +76,7 @@ static int serve_job(int sem_id, int service_type, const long NANOS_SIM_MIN) {
 
 //operatore prova ad occupare uno sportello
 static inline int seat_try_acquire(int seats_sid, int s) {
-    struct sembuf op = { .sem_num = (unsigned short)s, .sem_op = -1, .sem_flg = IPC_NOWAIT };
+    struct sembuf op = { .sem_num = s, .sem_op = -1, .sem_flg = IPC_NOWAIT };
     if (semop(seats_sid, &op, 1) == 0) return 1;
 
     if (errno == EAGAIN) return 0;
@@ -85,7 +85,7 @@ static inline int seat_try_acquire(int seats_sid, int s) {
 
 //operatore lascia lo sportello per andare in pausa
 static inline void seat_release(int seats_sid, int s) {
-    struct sembuf op = { .sem_num = (unsigned short)s, .sem_op = +1, .sem_flg = 0 };
+    struct sembuf op = { .sem_num = s, .sem_op = +1, .sem_flg = 0 };
     if (semop(seats_sid, &op, 1) == -1) { perror("semop seat_release"); exit(EXIT_FAILURE); }
 }
 
@@ -94,8 +94,6 @@ static inline int should_pause_today(int pauses_left) {
     if (pauses_left <= 0) return 0;
 
     int roll = rand() % 100;
-
-    //fprintf(stderr, "[PAUSE?]pauses_left=%d roll=%d\n", pauses_left, roll);
 
     return roll < 20; //20%
 }
@@ -149,7 +147,7 @@ static void run_operatore(int sem_id, int serv_qid, int done_qid, int log_qid, i
     const int PAUSE_MINUTES = 10;
 
     while (1) {
-        /* 1) start-of-day (blocking) */
+        /* start-of-day (blocking) */
         sv_sem_wait(sem_id, 0);
 
         /* sim ended right after start? (don’t consume sem2) */
@@ -158,7 +156,7 @@ static void run_operatore(int sem_id, int serv_qid, int done_qid, int log_qid, i
         if (v > 0) return;
 
         int has_seat = 0;
-        int announced_today = 0;   // NEW: to send SEAT_ACQUIRED only once/day
+        int announced_today = 0;   //to send SEAT_ACQUIRED only once/day
 
         while (!has_seat) {
             if (seat_try_acquire(seats_sid, my_service)) {
@@ -184,7 +182,7 @@ static void run_operatore(int sem_id, int serv_qid, int done_qid, int log_qid, i
             struct timespec ts = {0, 1000000}; nanosleep(&ts, NULL);
         }
 
-        /* 3) day loop */
+        /* day loop */
         while (1) {
             erogatore_request_msg req;
             ssize_t r = msgrcv(serv_qid, &req, MSGSZ(erogatore_request_msg),
